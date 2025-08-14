@@ -25,13 +25,16 @@ Aremu is an AI-powered job search platform that searches the internet 24/7 for N
 
 ```
 Aremu/
-├── scraper/                 # Job data collection
-│   ├── linkedin/           # LinkedIn scraper with Nigerian optimization
-│   ├── jobspy/            # JobSpy integration
-│   └── database/          # Database configuration
-├── data_parser/           # Data processing and AI enhancement
-│   └── parsers/          # Enhanced job data parsers
-├── frontend/             # User interface (coming soon)
+├── FE/                     # Frontend - AI Job Search Interface
+│   ├── index.html         # Main landing page
+│   ├── server.js          # Express server for deployment
+│   └── railway.json       # Railway deployment config
+├── scraper/               # Job data collection
+│   ├── linkedin/          # LinkedIn scraper with Nigerian optimization
+│   ├── jobspy/           # JobSpy integration
+│   └── database/         # Database configuration
+├── data_parser/          # Data processing and AI enhancement
+│   └── parsers/         # Enhanced job data parsers
 └── database/            # Database schemas and migrations
 ```
 
@@ -82,6 +85,25 @@ python parsers/ai_enhanced_parser.py
 cd scraper/linkedin
 python enhanced_linkedin_scraper.py
 ```
+
+## 🌐 Frontend Deployment
+
+### Deploy to Railway
+```bash
+# Navigate to frontend
+cd FE
+
+# Deploy to Railway (requires Railway CLI)
+railway login
+railway init
+railway up
+```
+
+Or deploy directly from GitHub:
+1. Go to [railway.app](https://railway.app)
+2. Connect your GitHub repository
+3. Set root directory to `FE`
+4. Deploy automatically
 
 ## 📊 Data Schema
 
