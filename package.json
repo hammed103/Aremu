@@ -1,0 +1,22 @@
+{
+  "name": "aremu-monorepo",
+  "version": "1.0.0",
+  "description": "Aremu AI Job Search Platform - Monorepo",
+  "scripts": {
+    "start": "node start.js",
+    "dev": "node start.js",
+    "build": "cd FE && npm install"
+  },
+  "keywords": [
+    "jobs",
+    "nigeria",
+    "ai",
+    "whatsapp",
+    "job-search"
+  ],
+  "author": "Aremu Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
