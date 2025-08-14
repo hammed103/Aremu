@@ -1,0 +1,25 @@
+{
+  "name": "aremu-frontend",
+  "version": "1.0.0",
+  "description": "Aremu AI Job Search Platform - Frontend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "jobs",
+    "nigeria",
+    "ai",
+    "whatsapp",
+    "job-search"
+  ],
+  "author": "Aremu Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
