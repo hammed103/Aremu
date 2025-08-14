@@ -1130,7 +1130,7 @@ body {
 
   .hero p {
     font-size: clamp(16px, 4.5vw, 20px);
-    margin-bottom: 32px;
+    margin-bottom: 12px;
   }
 
   .hero-tagline {
