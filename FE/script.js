@@ -1,5 +1,5 @@
 // Config
-const WHATSAPP_NUMBER = '2348145325837';
+const WHATSAPP_NUMBER = '15551640765';
 
 // Rotating examples
 const examples = [

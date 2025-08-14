@@ -1,0 +1,26 @@
+# Aremu WhatsApp Bot Dependencies
+
+# Web Framework
+Flask==3.0.0
+gunicorn==21.2.0
+
+# AI & OpenAI
+openai
+
+# HTTP Requests
+requests==2.31.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# JSON handling (built-in, but explicit for clarity)
+# json - built-in
+
+# Logging (built-in)
+# logging - built-in
+
+# Date/Time handling (built-in)
+# datetime - built-in
+
+# Security & Hashing (built-in)
+# hashlib - built-in

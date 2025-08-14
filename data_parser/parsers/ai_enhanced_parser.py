@@ -58,7 +58,6 @@ class AIEnhancedJobParser:
     def setup_openai(self):
         """Setup OpenAI client"""
         openai_key = os.getenv("OPENAI_API_KEY")
-
         if openai_key and OPENAI_AVAILABLE:
             try:
                 self.openai_client = OpenAI(api_key=openai_key)
