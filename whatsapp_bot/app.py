@@ -13,6 +13,8 @@ import requests
 from datetime import datetime
 import hashlib
 from dotenv import load_dotenv
+from database_manager import DatabaseManager
+import uuid
 
 # Load environment variables
 load_dotenv()
@@ -52,10 +54,63 @@ class WhatsAppBot:
             f"https://graph.facebook.com/v18.0/{self.whatsapp_phone_id}/messages"
         )
 
-        # Store conversation history (in production, use a database)
-        self.conversations = {}
+        # Initialize database manager
+        self.db = DatabaseManager()
+        self.db.ensure_tables_exist()
+
+        # Session tracking
+        self.current_sessions = {}  # Track active session IDs
 
         logger.info("🤖 Aremu WhatsApp Bot initialized")
+
+    def manage_conversation_memory(self):
+        """Clean up old conversations to prevent memory issues"""
+        if len(self.conversations) > self.max_users:
+            # Remove oldest conversations (simple FIFO)
+            oldest_users = list(self.conversations.keys())[: -self.max_users]
+            for user in oldest_users:
+                del self.conversations[user]
+                if user in self.user_sessions:
+                    del self.user_sessions[user]
+            logger.info(f"🧹 Cleaned up {len(oldest_users)} old conversations")
+
+    def get_user_conversation(self, phone_number):
+        """Get conversation history for a user"""
+        conversation = self.conversations.get(phone_number, [])
+
+        # Trim conversation if too long
+        if len(conversation) > self.max_conversation_length:
+            # Keep system context + recent messages
+            conversation = conversation[-self.max_conversation_length :]
+            self.conversations[phone_number] = conversation
+
+        return conversation
+
+    def update_user_session(self, phone_number, user_message, ai_response):
+        """Update user session and conversation history"""
+        from datetime import datetime
+
+        # Update session info
+        self.user_sessions[phone_number] = {
+            "last_message": datetime.now().isoformat(),
+            "message_count": self.user_sessions.get(phone_number, {}).get(
+                "message_count", 0
+            )
+            + 1,
+        }
+
+        # Get current conversation
+        conversation = self.get_user_conversation(phone_number)
+
+        # Add new messages
+        conversation.append({"role": "user", "content": user_message})
+        conversation.append({"role": "assistant", "content": ai_response})
+
+        # Store updated conversation
+        self.conversations[phone_number] = conversation
+
+        # Clean up memory if needed
+        self.manage_conversation_memory()
 
     def verify_webhook(self, mode, token, challenge):
         """Verify WhatsApp webhook"""
@@ -69,30 +124,66 @@ class WhatsAppBot:
     def get_ai_response(self, user_message, phone_number):
         """Get AI response for user message"""
         try:
-            # Get conversation history
-            conversation = self.conversations.get(phone_number, [])
+            # Get or create user in database
+            user_id = self.db.get_or_create_user(phone_number)
+            if not user_id:
+                return "Sorry, I'm having trouble right now. Please try again."
 
-            # Add user message to conversation
+            # Get conversation history from database
+            conversation = self.db.get_conversation_history(user_id, limit=10)
+
+            # Add current user message to conversation
             conversation.append({"role": "user", "content": user_message})
 
-            # Prepare system prompt for Nigerian job search context
-            system_prompt = """You are Aremu, an AI assistant specialized in helping Nigerians find jobs. You are friendly, professional, and knowledgeable about the Nigerian job market.
+            # Get user info for personalization
+            user_preferences = self.db.get_user_preferences(user_id)
+            cursor = self.db.connection.cursor()
+            cursor.execute("SELECT name FROM users WHERE id = %s", (user_id,))
+            user_name = cursor.fetchone()
+            user_name = user_name[0] if user_name and user_name[0] else None
 
-Key capabilities:
-- Help users search for jobs in Nigeria
-- Provide career advice and tips
-- Assist with CV/resume guidance
-- Share information about Nigerian companies and industries
-- Offer interview preparation tips
+            # Analyze user preferences completeness
+            missing_prefs = self.analyze_missing_preferences(user_preferences)
 
-Guidelines:
-- Be conversational and helpful
-- Use Nigerian context and understanding
-- Keep responses concise for WhatsApp (under 1600 characters)
-- Ask follow-up questions to better understand user needs
-- Be encouraging and supportive
+            # Prepare intelligent system prompt
+            system_prompt = f"""You are Aremu, a friendly AI job search assistant in TEST MODE. You help Nigerians find their perfect jobs through natural conversation.
 
-Current conversation context: This is a WhatsApp conversation, so keep responses mobile-friendly."""
+USER PROFILE:
+- Name: {user_name or "Unknown"}
+- Current preferences: {user_preferences}
+- Missing info: {missing_prefs}
+
+PERSONALITY: Be warm, conversational, and genuinely interested in helping. Adapt your tone based on the user's energy. Use their name when you know it.
+
+INTELLIGENCE GUIDELINES:
+1. **You are the ONLY preference detector**: No other system will extract preferences - YOU must detect everything
+2. **Assess what you know**: Based on their saved preferences, intelligently decide what to ask next
+3. **Ask smart questions**: If they have no job type, ask about their interests/skills. If no location preference, ask about remote vs office work
+4. **Be contextual**: If they mention a job, naturally ask follow-up questions about their preferences for that type of role
+5. **Don't overwhelm**: Ask 1-2 relevant questions at a time, not everything at once
+6. **Show jobs when ready**: Once you have enough info (job type + at least 1 other preference), offer to show sample jobs
+
+CRITICAL: You MUST always end your response with a PREFERENCES_DETECTED section if you detect ANY preferences or name:
+
+PREFERENCES_DETECTED: {{
+  "job_type": "software developer",
+  "employment_type": "full-time",
+  "salary_currency": "USD",
+  "location_preference": "remote",
+  "experience_level": "mid",
+  "name": "John"
+}}
+
+Only include fields you actually detect. This is MANDATORY for the system to work.
+
+SAMPLE JOB FORMAT (when showing jobs):
+"1️⃣ [Job Title] - [Company], [Location], [Salary], Requirements: [brief], Apply: [email]"
+
+IMPORTANT:
+- Always end with "I'm still in test mode, so these are sample jobs! 🤖" when showing jobs
+- Keep responses under 1600 characters
+- Be natural and conversational, not robotic
+- Ask questions that feel genuine, not like a form"""
 
             # Prepare messages for OpenAI
             messages = [{"role": "system", "content": system_prompt}]
@@ -107,18 +198,118 @@ Current conversation context: This is a WhatsApp conversation, so keep responses
 
             ai_response = response.choices[0].message.content.strip()
 
-            # Add AI response to conversation
-            conversation.append({"role": "assistant", "content": ai_response})
+            # Extract AI-detected preferences from response
+            clean_response, ai_detected_prefs = self.extract_ai_preferences(ai_response)
 
-            # Store updated conversation
-            self.conversations[phone_number] = conversation
+            # Generate session ID for this conversation
+            session_id = self.current_sessions.get(phone_number, str(uuid.uuid4()))
+            self.current_sessions[phone_number] = session_id
 
-            logger.info(f"✅ AI response generated for {phone_number}")
-            return ai_response
+            # Save conversation to database (use clean response without preference data)
+            self.db.save_conversation_message(user_id, "user", user_message, session_id)
+            self.db.save_conversation_message(
+                user_id, "assistant", clean_response, session_id
+            )
+
+            # Save AI-detected preferences (AI handles ALL detection now)
+            if ai_detected_prefs:
+                self.save_ai_detected_preferences(user_id, ai_detected_prefs)
+                logger.info(f"🤖 AI detected and saved: {ai_detected_prefs}")
+            else:
+                logger.info("🤖 AI didn't detect any new preferences in this message")
+
+            logger.info(f"✅ AI response generated and saved for {phone_number}")
+            return clean_response  # Return clean response without preference data
 
         except Exception as e:
             logger.error(f"❌ Error generating AI response: {e}")
             return "Sorry, I'm having trouble processing your message right now. Please try again in a moment."
+
+    def extract_ai_preferences(self, ai_response):
+        """Extract preferences detected by AI from response"""
+        import re
+        import json
+
+        # Look for PREFERENCES_DETECTED section
+        pattern = r"PREFERENCES_DETECTED:\s*(\{[^}]+\})"
+        match = re.search(pattern, ai_response, re.DOTALL)
+
+        if match:
+            try:
+                # Extract the JSON-like content
+                prefs_text = match.group(1)
+                # Clean up the format (remove comments in parentheses)
+                prefs_text = re.sub(r"\s*\([^)]+\)", "", prefs_text)
+                # Parse as JSON
+                preferences = json.loads(prefs_text)
+
+                # Remove the preferences section from response
+                clean_response = re.sub(
+                    r"PREFERENCES_DETECTED:.*", "", ai_response, flags=re.DOTALL
+                ).strip()
+
+                logger.info(f"🤖 AI detected preferences: {preferences}")
+                return clean_response, preferences
+
+            except Exception as e:
+                logger.error(f"❌ Error parsing AI preferences: {e}")
+
+        # No preferences detected
+        return ai_response, None
+
+    def save_ai_detected_preferences(self, user_id, preferences):
+        """Save preferences detected by AI"""
+        try:
+            # Filter out None values and clean up
+            clean_prefs = {}
+            for key, value in preferences.items():
+                if value and value.strip():
+                    clean_prefs[key] = value.strip()
+
+            if clean_prefs:
+                # Handle name separately
+                if "name" in clean_prefs:
+                    self.db.update_user_name(user_id, clean_prefs["name"])
+                    del clean_prefs["name"]
+
+                # Save job preferences
+                if clean_prefs:
+                    self.db.save_user_preferences(user_id, clean_prefs)
+                    logger.info(f"💾 Saved AI-detected preferences: {clean_prefs}")
+
+        except Exception as e:
+            logger.error(f"❌ Error saving AI preferences: {e}")
+
+    def analyze_missing_preferences(self, user_preferences):
+        """Analyze what preferences are missing to guide intelligent questioning"""
+        essential_prefs = [
+            "job_type",
+            "employment_type",
+            "salary_currency",
+            "location_preference",
+            "experience_level",
+        ]
+
+        missing = []
+        for pref in essential_prefs:
+            if not user_preferences.get(pref):
+                missing.append(pref)
+
+        # Convert to human-readable format
+        missing_readable = []
+        pref_map = {
+            "job_type": "what type of job they want",
+            "employment_type": "full-time vs part-time preference",
+            "salary_currency": "currency preference (Naira/Dollar)",
+            "location_preference": "location/remote preference",
+            "experience_level": "experience level",
+        }
+
+        for pref in missing:
+            if pref in pref_map:
+                missing_readable.append(pref_map[pref])
+
+        return missing_readable
 
     def send_whatsapp_message(self, phone_number, message):
         """Send message via WhatsApp API"""
