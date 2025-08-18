@@ -1,8 +1,14 @@
-# Aremu 🇳🇬
+# 🚀 Aremu - Intelligent WhatsApp Job Distribution System
 
-**Stop Searching for Jobs... Let AI do that for You**
+**A world-class, real-time job distribution platform that delivers personalized job opportunities directly to users via WhatsApp.**
 
-Aremu is an AI-powered job search platform that searches the internet 24/7 for Nigerian job opportunities, so you don't have to. Built specifically for the Nigerian job market with comprehensive data extraction and AI enhancement.
+Aremu is an intelligent job distribution system that:
+- **Scrapes jobs** from multiple sources (LinkedIn, Indeed, etc.)
+- **Enhances with AI** for better matching and summaries
+- **Matches intelligently** using 39+ scoring factors
+- **Delivers instantly** via WhatsApp when jobs are found
+- **Manages costs** through smart 24-hour window system
+- **Prevents duplicates** with comprehensive tracking
 
 ## 🚀 Features
 

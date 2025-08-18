@@ -293,7 +293,7 @@ class FixedDatabaseJobScraper:
         logger.info("=" * 40)
 
         # Test with one search
-        saved = self.scrape_and_save("software engineer", "Lagos, Nigeria", "test_fix")
+        saved = self.scrape_and_save("", "Lagos, Nigeria", "test_fix")
 
         # Show results
         logger.info(f"\n📊 Test Results:")
