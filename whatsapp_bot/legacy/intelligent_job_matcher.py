@@ -325,6 +325,13 @@ class IntelligentJobMatcher:
         if not ai_job_function:
             return 0.0
 
+        # Handle case where ai_job_function might be a list
+        if isinstance(ai_job_function, list):
+            ai_job_function = ai_job_function[0] if ai_job_function else ""
+
+        if not ai_job_function:
+            return 0.0
+
         ai_function_lower = ai_job_function.lower()
 
         # Check user categories
@@ -400,7 +407,13 @@ class IntelligentJobMatcher:
 
         # Get job title fields
         job_title = (job.get("title", "") or "").lower()
-        ai_job_title = (job.get("ai_job_title", "") or "").lower()
+
+        # Handle ai_job_title which might be a list
+        ai_job_title_raw = job.get("ai_job_title", "") or ""
+        if isinstance(ai_job_title_raw, list):
+            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
+        else:
+            ai_job_title = ai_job_title_raw.lower()
 
         max_score = 0.0
         for user_role in user_roles:
@@ -424,7 +437,13 @@ class IntelligentJobMatcher:
             return 0.0
 
         job_title = (job.get("title", "") or "").lower()
-        ai_job_title = (job.get("ai_job_title", "") or "").lower()
+
+        # Handle ai_job_title which might be a list
+        ai_job_title_raw = job.get("ai_job_title", "") or ""
+        if isinstance(ai_job_title_raw, list):
+            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
+        else:
+            ai_job_title = ai_job_title_raw.lower()
 
         max_score = 0.0
         for user_role in user_roles:
@@ -453,7 +472,14 @@ class IntelligentJobMatcher:
             return 0.0
 
         job_title = (job.get("title", "") or "").lower()
-        ai_job_title = (job.get("ai_job_title", "") or "").lower()
+
+        # Handle ai_job_title which might be a list
+        ai_job_title_raw = job.get("ai_job_title", "") or ""
+        if isinstance(ai_job_title_raw, list):
+            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
+        else:
+            ai_job_title = ai_job_title_raw.lower()
+
         job_description = (job.get("description", "") or "").lower()
 
         # Find user's clusters
@@ -497,7 +523,13 @@ class IntelligentJobMatcher:
 
         # Get job skills from various fields
         job_description = (job.get("description", "") or "").lower()
-        ai_skills = (job.get("ai_skills_required", "") or "").lower()
+
+        # Handle ai_skills_required which might be a list
+        ai_skills_raw = job.get("ai_skills_required", "") or ""
+        if isinstance(ai_skills_raw, list):
+            ai_skills = " ".join(ai_skills_raw).lower() if ai_skills_raw else ""
+        else:
+            ai_skills = ai_skills_raw.lower()
 
         matched_skills = 0
         total_user_skills = len(user_skills)
@@ -619,7 +651,13 @@ class IntelligentJobMatcher:
             return 0.0
 
         job_description = (job.get("description", "") or "").lower()
-        ai_exp_required = (job.get("ai_experience_required", "") or "").lower()
+
+        # Handle ai_experience_required which might be a list
+        ai_exp_raw = job.get("ai_experience_required", "") or ""
+        if isinstance(ai_exp_raw, list):
+            ai_exp_required = " ".join(ai_exp_raw).lower() if ai_exp_raw else ""
+        else:
+            ai_exp_required = ai_exp_raw.lower()
 
         # Simple experience level matching
         if user_exp_level:

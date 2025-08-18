@@ -83,13 +83,17 @@ class JobService:
             job_messages = []
 
             # First message: Introduction
-            name_part = f"🔍 Found {len(jobs)} new matches for you{f', {user_name}' if user_name else ''}!"
-            job_messages.append(name_part)
+            intro_msg = f"Found 3+ jobs matching your preferences. Here's the top 3:"
+            job_messages.append(intro_msg)
 
             # Individual job messages using ai_summary
             for i, job in enumerate(jobs, 1):
                 job_message = self._format_single_job_with_ai_summary(job, i)
                 job_messages.append(job_message)
+
+            # Add follow-up message to encourage more job requests
+            follow_up_message = "💬 Type 'jobs' again to see more recent opportunities!"
+            job_messages.append(follow_up_message)
 
             # Track that these jobs have been shown to the user
             self._save_shown_jobs(

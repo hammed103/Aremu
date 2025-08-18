@@ -405,6 +405,9 @@ class AIEnhancedJobParser:
                     # Save to database
                     job_id = self.save_canonical_job(enhanced_job)
 
+                    # Commit immediately so delivery engine can access the job
+                    self.connection.commit()
+
                     # SMART DELIVERY: Trigger real-time job delivery
                     if (
                         job_id

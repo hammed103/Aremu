@@ -41,7 +41,7 @@ class SmartDeliveryEngine:
 
         # Delivery settings
         self.min_match_score = 39  # Minimum match score for delivery
-        self.max_jobs_per_user_per_day = 10
+        self.max_jobs_per_user_per_day = None  # No daily limits
         self.max_alerts_per_batch = 50  # Prevent spam during large scraping
 
         logger.info("🚀 Smart Delivery Engine initialized")
@@ -112,32 +112,91 @@ class SmartDeliveryEngine:
 
         for user in eligible_users:
             try:
-                # Check daily limit first
+                # Check daily limit first (if enabled)
                 user_id = user["user_id"]
-                if not self.job_tracker.should_send_more_jobs(
-                    user_id, self.max_jobs_per_user_per_day
-                ):
-                    continue
+                user_name = user.get("name", "Unknown")
+
+                print(f"🔍 Processing User {user_id} ({user_name})...")
+
+                # Skip daily limit check if max_jobs_per_user_per_day is None
+                if self.max_jobs_per_user_per_day is not None:
+                    if not self.job_tracker.should_send_more_jobs(
+                        user_id, self.max_jobs_per_user_per_day
+                    ):
+                        print(f"   ⏸️ User {user_id} hit daily limit, skipping")
+                        continue
+                else:
+                    print(
+                        f"   ♾️ No daily limits - processing all jobs for User {user_id}"
+                    )
 
                 # Check if job already shown
-                if self.job_tracker.get_unseen_jobs(user_id, [job]):
+                unseen_jobs = self.job_tracker.get_unseen_jobs(user_id, [job])
+                if unseen_jobs:
+                    print(f"   ✅ User {user_id} has unseen jobs, calculating match...")
+
+                    # Convert user row to preferences format for intelligent matcher
+                    user_prefs = self._convert_user_to_preferences_format(user)
+
+                    # Debug logging - UPDATED VERSION
+                    print(f"🔧 DEBUG: User {user_id} preferences: {user_prefs}")
+
                     # Calculate match score
-                    match_score = self.job_matcher._calculate_job_score(user, job)
+                    match_score = self.job_matcher._calculate_job_score(user_prefs, job)
 
                     if match_score >= self.min_match_score:
                         matches.append(
                             {"user": user, "job": job, "match_score": match_score}
                         )
+                else:
+                    print(f"   ⏭️ User {user_id} has already seen this job, skipping")
 
             except Exception as e:
                 logger.error(
                     f"❌ Error calculating match for user {user.get('user_id')}: {e}"
                 )
+                logger.error(f"🔧 User data: {user}")
+                logger.error(f"🔧 Job data: {job.get('id', 'unknown')}")
+                import traceback
+
+                logger.error(f"🔧 Full traceback: {traceback.format_exc()}")
                 continue
 
         # Sort by match score (highest first)
         matches.sort(key=lambda x: x["match_score"], reverse=True)
         return matches
+
+    def _convert_user_to_preferences_format(self, user: Dict) -> Dict:
+        """Convert user database row to preferences format for intelligent matcher"""
+
+        def ensure_list_of_strings(value):
+            """Ensure value is a list of strings"""
+            if value is None:
+                return []
+            if isinstance(value, str):
+                return [value]  # Convert single string to list
+            if isinstance(value, list):
+                # Ensure all items are strings
+                return [str(item) for item in value if item is not None]
+            return []
+
+        return {
+            "job_roles": ensure_list_of_strings(user.get("job_roles")),
+            "technical_skills": ensure_list_of_strings(user.get("technical_skills")),
+            "preferred_locations": ensure_list_of_strings(
+                user.get("preferred_locations")
+            ),
+            "salary_min": user.get("salary_min"),
+            "salary_currency": user.get("salary_currency"),
+            "willing_to_relocate": user.get("willing_to_relocate", False),
+            "work_arrangements": ensure_list_of_strings(user.get("work_arrangements")),
+            "years_of_experience": user.get("years_of_experience"),
+            "experience_level": user.get("experience_level"),
+            "job_categories": ensure_list_of_strings(user.get("job_categories")),
+            "industry_preferences": ensure_list_of_strings(
+                user.get("industry_preferences")
+            ),
+        }
 
     def send_whatsapp_job_alert(
         self, user: Dict, job: Dict, match_score: float
@@ -235,6 +294,9 @@ class SmartDeliveryEngine:
                     if self.send_whatsapp_job_alert(user, job, match_score):
                         # Mark job as shown (with error handling for timing issues)
                         try:
+                            import time
+
+                            time.sleep(0.1)  # Small delay to ensure commit is processed
                             self.job_tracker.mark_job_as_shown(
                                 user["user_id"],
                                 job["id"],

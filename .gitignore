@@ -106,6 +106,7 @@ Thumbs.db
 
 # Jupyter Notebooks
 .ipynb_checkpoints
+*.ipynb
 
 # Coverage Reports
 htmlcov/
@@ -165,6 +166,13 @@ models/
 *.mov
 *.mkv
 *.iso
+
+# Conversation & Debug Files
+*conversation*.txt
+real_whatsapp_conversation*.txt
+whatsapp_conversation*.txt
+debug_*.py
+test_*.py
 
 # Keep Important Empty Directories
 !data/.gitkeep
