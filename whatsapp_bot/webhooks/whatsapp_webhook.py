@@ -68,8 +68,12 @@ class WhatsAppWebhook:
             success = self.whatsapp_service.send_message(phone_number, ai_response)
 
             if success:
-                # Save conversation to database
+                # Save conversation to database and update user activity
                 user_id = self.bot_controller.db.get_or_create_user(phone_number)
+
+                # Update user's last_active timestamp (critical for 24h window)
+                self.bot_controller.db.update_user_activity(user_id)
+
                 # Save user message
                 self.bot_controller.db.save_conversation_message(
                     user_id, "user", user_message

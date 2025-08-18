@@ -5,10 +5,12 @@ Clean, organized architecture with separation of concerns
 """
 
 import os
+import threading
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from dotenv import load_dotenv
 from core.bot_controller import BotController
 from services.whatsapp_service import WhatsAppService
+from services.reminder_service import ReminderService
 from webhooks.whatsapp_webhook import WhatsAppWebhook
 from utils.logger import setup_logger
 
@@ -32,12 +34,42 @@ whatsapp_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
 whatsapp_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN", "aremu_verify_token")
 
-# Initialize bot controller and services
-bot_controller = BotController(openai_api_key, whatsapp_token, whatsapp_phone_id)
-whatsapp_service = WhatsAppService(whatsapp_token, whatsapp_phone_id)
-webhook_handler = WhatsAppWebhook(bot_controller, whatsapp_service, verify_token)
+# Initialize bot controller and services (with error handling)
+try:
+    bot_controller = BotController(openai_api_key, whatsapp_token, whatsapp_phone_id)
+    whatsapp_service = WhatsAppService(whatsapp_token, whatsapp_phone_id)
+    webhook_handler = WhatsAppWebhook(bot_controller, whatsapp_service, verify_token)
 
-logger.info("🤖 Aremu WhatsApp Bot initialized with clean architecture")
+    # Initialize reminder service
+    reminder_service = ReminderService(whatsapp_service)
+    reminder_service.create_reminder_log_table()
+
+    logger.info("🤖 Aremu WhatsApp Bot initialized with clean architecture")
+    BOT_INITIALIZED = True
+except Exception as e:
+    logger.error(f"❌ Failed to initialize bot components: {e}")
+    logger.info("🌐 Starting in frontend-only mode")
+    bot_controller = None
+    whatsapp_service = None
+    webhook_handler = None
+    reminder_service = None
+    BOT_INITIALIZED = False
+
+
+def run_reminder_daemon():
+    """Run reminder daemon in background thread"""
+    if reminder_service and BOT_INITIALIZED:
+        import time
+
+        logger.info("🕐 Starting reminder daemon in background")
+
+        while True:
+            try:
+                reminder_service.run_reminder_cycle()
+                time.sleep(300)  # Check every 5 minutes
+            except Exception as e:
+                logger.error(f"❌ Reminder daemon error: {e}")
+                time.sleep(60)  # Wait 1 minute on error
 
 
 # Flask Routes
@@ -102,5 +134,11 @@ if __name__ == "__main__":
     logger.info(f"🚀 Starting Aremu unified server on port {port}")
     logger.info(f"📱 Frontend available at: http://localhost:{port}/")
     logger.info(f"🤖 WhatsApp webhook at: http://localhost:{port}/webhook")
+
+    # Start reminder daemon in background thread (only in production)
+    if not debug_mode and BOT_INITIALIZED:
+        reminder_thread = threading.Thread(target=run_reminder_daemon, daemon=True)
+        reminder_thread.start()
+        logger.info("🕐 Reminder daemon started in background")
 
     app.run(host="0.0.0.0", port=port, debug=debug_mode)
