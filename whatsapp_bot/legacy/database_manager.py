@@ -104,6 +104,20 @@ class DatabaseManager:
             logger.error(f"❌ Error managing user {phone_number}: {e}")
             return None
 
+    def update_user_activity(self, user_id: int) -> bool:
+        """Update user's last_active timestamp (critical for 24-hour window tracking)"""
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = %s",
+                (user_id,),
+            )
+            cursor.close()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error updating user activity: {e}")
+            return False
+
     def save_conversation_message(
         self, user_id: int, message_type: str, content: str, session_id: str = None
     ) -> bool:

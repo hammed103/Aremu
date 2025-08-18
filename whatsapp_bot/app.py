@@ -42,7 +42,12 @@ try:
 
     # Initialize reminder service
     reminder_service = ReminderService(whatsapp_service)
-    reminder_service.create_reminder_log_table()
+
+    # Check table status and create if needed
+    if not reminder_service.check_table_status():
+        reminder_service.create_reminder_log_table()
+    else:
+        logger.info("📋 Reminder log table already exists")
 
     logger.info("🤖 Aremu WhatsApp Bot initialized with clean architecture")
     BOT_INITIALIZED = True
