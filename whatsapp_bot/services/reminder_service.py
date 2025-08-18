@@ -25,7 +25,17 @@ class ReminderService:
 
         # Reminder schedule (hours remaining when to send reminder)
         # For testing: start reminders much earlier
-        self.reminder_schedule = [22, 8, 5, 3, 1, 0.25]  # 22h, 8h, 5h, 3h, 1h, 15min
+        self.reminder_schedule = [
+            22,
+            20,
+            18,
+            16,
+            8,
+            5,
+            3,
+            1,
+            0.25,
+        ]  # More frequent for testing
 
     def connect_db(self):
         """Connect to database"""
@@ -123,15 +133,40 @@ class ReminderService:
     ) -> str:
         """Get escalating reminder messages based on time remaining"""
 
-        if (
-            hours_remaining >= 21.5 and hours_remaining <= 22.5
-        ):  # 22 hour reminder (TESTING)
+        if hours_remaining >= 21.5 and hours_remaining <= 22.5:  # 22h reminder
             return (
                 f"🧪 *TEST REMINDER - 22 Hours Remaining*\n\n"
                 f"This is a test of the reminder system!\n"
                 f"I've been monitoring for 2 hours.\n"
                 f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
                 f"In production, this would be sent at 8 hours remaining.\n"
+                f"Send any message to reset the 24-hour cycle! ⚡"
+            )
+
+        elif hours_remaining >= 19.5 and hours_remaining <= 20.5:  # 20h reminder
+            return (
+                f"🧪 *TEST REMINDER - 20 Hours Remaining*\n\n"
+                f"I've been monitoring for 4 hours.\n"
+                f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
+                f"Testing the reminder system at 20h remaining.\n"
+                f"Send any message to reset the 24-hour cycle! ⚡"
+            )
+
+        elif hours_remaining >= 17.5 and hours_remaining <= 18.5:  # 18h reminder
+            return (
+                f"🧪 *TEST REMINDER - 18 Hours Remaining*\n\n"
+                f"I've been monitoring for 6 hours.\n"
+                f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
+                f"Testing the reminder system at 18h remaining.\n"
+                f"Send any message to reset the 24-hour cycle! ⚡"
+            )
+
+        elif hours_remaining >= 15.5 and hours_remaining <= 16.5:  # 16h reminder
+            return (
+                f"🧪 *TEST REMINDER - 16 Hours Remaining*\n\n"
+                f"I've been monitoring for 8 hours.\n"
+                f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
+                f"Testing the reminder system at 16h remaining.\n"
                 f"Send any message to reset the 24-hour cycle! ⚡"
             )
 
