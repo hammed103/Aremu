@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import psycopg2
 import psycopg2.extras
+from psycopg2 import pool
 from services.whatsapp_service import WhatsAppService
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class ReminderService:
     def __init__(self, whatsapp_service: WhatsAppService):
         """Initialize reminder service"""
         self.whatsapp_service = whatsapp_service
-        self.connection = None
+        self.connection_pool = None
         self.connect_db()
 
         # Reminder schedule (hours remaining when to send reminder)
@@ -38,29 +39,106 @@ class ReminderService:
         ]  # More frequent for testing
 
     def connect_db(self):
-        """Connect to database"""
+        """Create database connection pool"""
         try:
             database_url = os.getenv(
                 "DATABASE_URL",
                 "postgresql://postgres.upnvhpgaljazlsoryfgj:prAlkIpbQDqOZtOj@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
             )
-            self.connection = psycopg2.connect(database_url)
-            self.connection.autocommit = True
-            logger.info("✅ Reminder service database connected")
+            self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=5,
+                dsn=database_url,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=5
+            )
+            logger.info("✅ Reminder service database pool created")
         except Exception as e:
-            logger.error(f"❌ Database connection failed: {e}")
+            logger.error(f"❌ Database connection pool creation failed: {e}")
             raise
+
+    def get_connection(self):
+        """Get a connection from the pool with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if not self.connection_pool:
+                    self.connect_db()
+
+                conn = self.connection_pool.getconn()
+                if conn:
+                    conn.autocommit = True
+                    return conn
+                else:
+                    raise Exception("Failed to get connection from pool")
+
+            except Exception as e:
+                logger.warning(f"⚠️ Connection attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                    try:
+                        if self.connection_pool:
+                            self.connection_pool.closeall()
+                        self.connect_db()
+                    except:
+                        pass
+                else:
+                    logger.error(f"❌ Failed to get database connection after {max_retries} attempts")
+                    raise
+
+    def return_connection(self, conn):
+        """Return a connection to the pool"""
+        try:
+            if self.connection_pool and conn:
+                self.connection_pool.putconn(conn)
+        except Exception as e:
+            logger.error(f"❌ Error returning connection to pool: {e}")
+
+    def execute_with_retry(self, query, params=None, fetch_one=False, fetch_all=False, cursor_factory=None):
+        """Execute query with automatic retry and connection management"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            conn = None
+            try:
+                conn = self.get_connection()
+                cursor = conn.cursor(cursor_factory=cursor_factory) if cursor_factory else conn.cursor()
+
+                cursor.execute(query, params)
+
+                if fetch_one:
+                    result = cursor.fetchone()
+                elif fetch_all:
+                    result = cursor.fetchall()
+                else:
+                    result = cursor.rowcount
+
+                cursor.close()
+                self.return_connection(conn)
+                return result
+
+            except Exception as e:
+                if conn:
+                    try:
+                        conn.rollback()
+                        self.return_connection(conn)
+                    except:
+                        pass
+
+                logger.warning(f"⚠️ Query attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    logger.error(f"❌ Query failed after {max_retries} attempts")
+                    raise
 
     def get_users_needing_reminders(self) -> List[Dict]:
         """Get users who need reminders based on their last activity"""
         try:
-            cursor = self.connection.cursor(
-                cursor_factory=psycopg2.extras.RealDictCursor
-            )
-
             # Get users whose last activity is approaching 24 hours
             query = """
-            SELECT 
+            SELECT
                 u.id,
                 u.phone_number,
                 u.name,
@@ -83,9 +161,11 @@ class ReminderService:
             ORDER BY u.last_active ASC
             """
 
-            cursor.execute(query)
-            users = cursor.fetchall()
-            cursor.close()
+            users = self.execute_with_retry(
+                query,
+                fetch_all=True,
+                cursor_factory=psycopg2.extras.RealDictCursor
+            )
 
             logger.info(f"📊 Found {len(users)} users needing reminders")
             return users
@@ -98,7 +178,6 @@ class ReminderService:
         """Check if we should send a reminder at this time"""
         try:
             # Check if we already sent a reminder for this time slot
-            cursor = self.connection.cursor()
 
             # Determine which reminder slot this falls into
             reminder_slot = None
@@ -112,15 +191,18 @@ class ReminderService:
 
             # Check if we already sent this reminder today
             query = """
-            SELECT COUNT(*) FROM reminder_log 
-            WHERE user_id = %s 
-            AND reminder_type = %s 
+            SELECT COUNT(*) FROM reminder_log
+            WHERE user_id = %s
+            AND reminder_type = %s
             AND DATE(sent_at) = CURRENT_DATE
             """
 
-            cursor.execute(query, (user_id, f"{reminder_slot}h_reminder"))
-            count = cursor.fetchone()[0]
-            cursor.close()
+            result = self.execute_with_retry(
+                query,
+                (user_id, f"{reminder_slot}h_reminder"),
+                fetch_one=True
+            )
+            count = result[0]
 
             return count == 0
 
@@ -234,15 +316,12 @@ class ReminderService:
     ):
         """Log that a reminder was sent"""
         try:
-            cursor = self.connection.cursor()
-
             query = """
             INSERT INTO reminder_log (user_id, reminder_type, hours_remaining, sent_at)
             VALUES (%s, %s, %s, NOW())
             """
 
-            cursor.execute(query, (user_id, reminder_type, hours_remaining))
-            cursor.close()
+            self.execute_with_retry(query, (user_id, reminder_type, hours_remaining))
 
         except Exception as e:
             logger.error(f"❌ Error logging reminder: {e}")
@@ -295,8 +374,6 @@ class ReminderService:
     def create_reminder_log_table(self):
         """Create reminder log table if it doesn't exist"""
         try:
-            cursor = self.connection.cursor()
-
             # Create table with IF NOT EXISTS to avoid conflicts
             query = """
             CREATE TABLE IF NOT EXISTS reminder_log (
@@ -308,7 +385,7 @@ class ReminderService:
             );
             """
 
-            cursor.execute(query)
+            self.execute_with_retry(query)
 
             # Create index separately to handle existing indexes gracefully
             index_query = """
@@ -316,8 +393,7 @@ class ReminderService:
             ON reminder_log(user_id, DATE(sent_at));
             """
 
-            cursor.execute(index_query)
-            cursor.close()
+            self.execute_with_retry(index_query)
             logger.info("✅ Reminder log table ready")
 
         except Exception as e:
@@ -328,29 +404,30 @@ class ReminderService:
     def check_table_status(self):
         """Check if reminder_log table exists and is accessible"""
         try:
-            cursor = self.connection.cursor()
-
             # Check if table exists
-            cursor.execute(
+            result = self.execute_with_retry(
                 """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables
                     WHERE table_name = 'reminder_log'
                 );
-            """
+                """,
+                fetch_one=True
             )
 
-            table_exists = cursor.fetchone()[0]
+            table_exists = result[0]
 
             if table_exists:
                 # Check table structure
-                cursor.execute("SELECT COUNT(*) FROM reminder_log;")
-                count = cursor.fetchone()[0]
+                count_result = self.execute_with_retry(
+                    "SELECT COUNT(*) FROM reminder_log;",
+                    fetch_one=True
+                )
+                count = count_result[0]
                 logger.info(f"✅ reminder_log table exists with {count} records")
             else:
                 logger.warning("⚠️ reminder_log table does not exist")
 
-            cursor.close()
             return table_exists
 
         except Exception as e:

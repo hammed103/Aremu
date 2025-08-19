@@ -58,6 +58,8 @@ body {
 
 .logo-icon {
   flex-shrink: 0;
+  font-size: 32px;
+  line-height: 1;
 }
 
 .logo-text {

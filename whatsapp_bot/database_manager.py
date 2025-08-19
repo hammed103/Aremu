@@ -7,32 +7,117 @@ Handles user management, preferences, and conversation history
 import os
 import psycopg2
 import psycopg2.extras
+from psycopg2 import pool
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import logging
+import time
+import json
+import re
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
     def __init__(self):
-        """Initialize database connection"""
-        self.connection = None
+        """Initialize database connection pool"""
+        self.connection_pool = None
         self.user_cache = {}  # Cache user info to avoid repeated queries
+        self.database_url = "postgresql://postgres.upnvhpgaljazlsoryfgj:prAlkIpbQDqOZtOj@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
         self.connect()
 
     def connect(self):
-        """Connect to PostgreSQL database"""
+        """Create connection pool for PostgreSQL database"""
         try:
-            # Use the same database config as your data parser
-            database_url = "postgresql://postgres.upnvhpgaljazlsoryfgj:prAlkIpbQDqOZtOj@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-            self.connection = psycopg2.connect(database_url)
-            self.connection.autocommit = True
-            logger.info("✅ Database connected successfully")
+            self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=10,
+                dsn=self.database_url,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=5
+            )
+            logger.info("✅ Database connection pool created successfully")
         except Exception as e:
-            logger.error(f"❌ Database connection failed: {e}")
+            logger.error(f"❌ Database connection pool creation failed: {e}")
             raise
+
+    def get_connection(self):
+        """Get a connection from the pool with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if not self.connection_pool:
+                    self.connect()
+
+                conn = self.connection_pool.getconn()
+                if conn:
+                    conn.autocommit = True
+                    return conn
+                else:
+                    raise Exception("Failed to get connection from pool")
+
+            except Exception as e:
+                logger.warning(f"⚠️ Connection attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)  # Wait before retry
+                    try:
+                        # Try to recreate the pool
+                        if self.connection_pool:
+                            self.connection_pool.closeall()
+                        self.connect()
+                    except:
+                        pass
+                else:
+                    logger.error(f"❌ Failed to get database connection after {max_retries} attempts")
+                    raise
+
+    def return_connection(self, conn):
+        """Return a connection to the pool"""
+        try:
+            if self.connection_pool and conn:
+                self.connection_pool.putconn(conn)
+        except Exception as e:
+            logger.error(f"❌ Error returning connection to pool: {e}")
+
+    def execute_with_retry(self, query, params=None, fetch_one=False, fetch_all=False, cursor_factory=None):
+        """Execute query with automatic retry and connection management"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            conn = None
+            try:
+                conn = self.get_connection()
+                cursor = conn.cursor(cursor_factory=cursor_factory) if cursor_factory else conn.cursor()
+
+                cursor.execute(query, params)
+
+                if fetch_one:
+                    result = cursor.fetchone()
+                elif fetch_all:
+                    result = cursor.fetchall()
+                else:
+                    result = cursor.rowcount
+
+                cursor.close()
+                self.return_connection(conn)
+                return result
+
+            except Exception as e:
+                if conn:
+                    try:
+                        conn.rollback()
+                        self.return_connection(conn)
+                    except:
+                        pass
+
+                logger.warning(f"⚠️ Query attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    logger.error(f"❌ Query failed after {max_retries} attempts: {query}")
+                    raise
 
     def ensure_tables_exist(self):
         """Create tables if they don't exist"""
@@ -59,8 +144,7 @@ class DatabaseManager:
                 )
                 return
 
-            cursor = self.connection.cursor()
-            cursor.execute(schema_sql)
+            self.execute_with_retry(schema_sql)
             logger.info("✅ Database tables ensured")
         except Exception as e:
             logger.error(f"❌ Failed to create tables: {e}")
@@ -68,35 +152,35 @@ class DatabaseManager:
     def get_or_create_user(self, phone_number: str, name: str = None) -> int:
         """Get existing user or create new one"""
         try:
-            cursor = self.connection.cursor()
-
             # Try to get existing user
-            cursor.execute(
-                "SELECT id, name FROM users WHERE phone_number = %s", (phone_number,)
+            result = self.execute_with_retry(
+                "SELECT id, name FROM users WHERE phone_number = %s",
+                (phone_number,),
+                fetch_one=True
             )
-            result = cursor.fetchone()
 
             if result:
                 user_id = result[0]
                 # Update last active and increment message count
-                cursor.execute(
-                    """UPDATE users 
-                       SET last_active = CURRENT_TIMESTAMP, 
+                self.execute_with_retry(
+                    """UPDATE users
+                       SET last_active = CURRENT_TIMESTAMP,
                            message_count = message_count + 1,
                            name = COALESCE(%s, name)
                        WHERE id = %s""",
-                    (name, user_id),
+                    (name, user_id)
                 )
                 logger.info(f"📱 Updated existing user {phone_number}")
                 return user_id
             else:
                 # Create new user
-                cursor.execute(
-                    """INSERT INTO users (phone_number, name) 
+                result = self.execute_with_retry(
+                    """INSERT INTO users (phone_number, name)
                        VALUES (%s, %s) RETURNING id""",
                     (phone_number, name),
+                    fetch_one=True
                 )
-                user_id = cursor.fetchone()[0]
+                user_id = result[0]
                 logger.info(f"👤 Created new user {phone_number}")
                 return user_id
 
@@ -107,12 +191,10 @@ class DatabaseManager:
     def update_user_activity(self, user_id: int) -> bool:
         """Update user's last_active timestamp (critical for 24-hour window tracking)"""
         try:
-            cursor = self.connection.cursor()
-            cursor.execute(
+            self.execute_with_retry(
                 "UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = %s",
-                (user_id,),
+                (user_id,)
             )
-            cursor.close()
             return True
         except Exception as e:
             logger.error(f"❌ Error updating user activity: {e}")
@@ -126,32 +208,30 @@ class DatabaseManager:
             if not session_id:
                 session_id = str(uuid.uuid4())
 
-            cursor = self.connection.cursor()
-
             # Get message order for this session
-            cursor.execute(
+            message_order = self.execute_with_retry(
                 "SELECT COALESCE(MAX(message_order), 0) + 1 FROM conversations WHERE session_id = %s",
                 (session_id,),
-            )
-            message_order = cursor.fetchone()[0]
+                fetch_one=True
+            )[0]
 
             # Insert message
-            cursor.execute(
-                """INSERT INTO conversations 
+            self.execute_with_retry(
+                """INSERT INTO conversations
                    (user_id, message_type, message_content, session_id, message_order)
                    VALUES (%s, %s, %s, %s, %s)""",
-                (user_id, message_type, content, session_id, message_order),
+                (user_id, message_type, content, session_id, message_order)
             )
 
             # Update session
-            cursor.execute(
+            self.execute_with_retry(
                 """INSERT INTO user_sessions (user_id, session_id, last_message_at, message_count)
                    VALUES (%s, %s, CURRENT_TIMESTAMP, 1)
-                   ON CONFLICT (session_id) 
-                   DO UPDATE SET 
+                   ON CONFLICT (session_id)
+                   DO UPDATE SET
                        last_message_at = CURRENT_TIMESTAMP,
                        message_count = user_sessions.message_count + 1""",
-                (user_id, session_id),
+                (user_id, session_id)
             )
 
             return True
@@ -163,20 +243,17 @@ class DatabaseManager:
     def get_conversation_history(self, user_id: int, limit: int = 20) -> List[Dict]:
         """Get recent conversation history for a user"""
         try:
-            cursor = self.connection.cursor(
+            messages = self.execute_with_retry(
+                """SELECT message_type, message_content, timestamp
+                   FROM conversations
+                   WHERE user_id = %s
+                   ORDER BY timestamp DESC
+                   LIMIT %s""",
+                (user_id, limit),
+                fetch_all=True,
                 cursor_factory=psycopg2.extras.RealDictCursor
             )
 
-            cursor.execute(
-                """SELECT message_type, message_content, timestamp
-                   FROM conversations 
-                   WHERE user_id = %s 
-                   ORDER BY timestamp DESC 
-                   LIMIT %s""",
-                (user_id, limit),
-            )
-
-            messages = cursor.fetchall()
             # Reverse to get chronological order
             return [
                 {"role": msg["message_type"], "content": msg["message_content"]}
