@@ -169,9 +169,26 @@ class BotController:
 
             # Check if user is updating a specific preference field
             if self.field_update_handler.is_updating_preference_field(user_id):
-                return self.field_update_handler.handle_preference_field_update(
+                response = self.field_update_handler.handle_preference_field_update(
                     user_message, phone_number, user_id
                 )
+
+                # Handle field update completion with preference menu
+                if (
+                    isinstance(response, dict)
+                    and response.get("type") == "field_updated"
+                ):
+                    # Send success message first
+                    self.whatsapp_service.send_message(
+                        phone_number, response["message"]
+                    )
+
+                    # Then show preference update menu with buttons
+                    return self.interactive_handler.show_preference_update_menu(
+                        phone_number, response["user_id"], None
+                    )
+
+                return response
 
             # Handle normal conversation using AI agent
             user_prefs = self.pref_manager.get_preferences(user_id)

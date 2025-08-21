@@ -145,7 +145,11 @@ class FieldUpdateHandler:
             # Clear the updating field state
             self.clear_updating_field(user_id)
 
-            return f"✅ Name updated to: {name}\n\nType 'settings' to update more fields or 'menu' for main menu."
+            return {
+                "type": "field_updated",
+                "message": f"✅ Name updated to: {name}",
+                "user_id": user_id,
+            }
 
         except Exception as e:
             logger.error(f"Error updating name: {e}")
@@ -166,7 +170,11 @@ class FieldUpdateHandler:
 
             if success:
                 self.clear_updating_field(user_id)
-                return f"✅ Job titles updated to: {', '.join(job_titles)}\n\nType 'settings' to update more fields or 'menu' for main menu."
+                return {
+                    "type": "field_updated",
+                    "message": f"✅ Job titles updated to: {', '.join(job_titles)}",
+                    "user_id": user_id,
+                }
             else:
                 return "Failed to update job titles. Please try again."
 
@@ -188,7 +196,11 @@ class FieldUpdateHandler:
 
             if success:
                 self.clear_updating_field(user_id)
-                return f"✅ Locations updated to: {', '.join(locations)}\n\nType 'settings' to update more fields or 'menu' for main menu."
+                return {
+                    "type": "field_updated",
+                    "message": f"✅ Locations updated to: {', '.join(locations)}",
+                    "user_id": user_id,
+                }
             else:
                 return "Failed to update locations. Please try again."
 
@@ -216,7 +228,11 @@ class FieldUpdateHandler:
 
                 if success:
                     self.clear_updating_field(user_id)
-                    return f"✅ Minimum salary updated to: ₦{salary_amount:,}\n\nType 'settings' to update more fields or 'menu' for main menu."
+                    return {
+                        "type": "field_updated",
+                        "message": f"✅ Minimum salary updated to: ₦{salary_amount:,}",
+                        "user_id": user_id,
+                    }
                 else:
                     return "Failed to update salary. Please try again."
             else:
@@ -251,7 +267,11 @@ class FieldUpdateHandler:
                     if years == 0
                     else f"{years} year{'s' if years != 1 else ''}"
                 )
-                return f"✅ Experience updated to: {experience_text}\n\nType 'settings' to update more fields or 'menu' for main menu."
+                return {
+                    "type": "field_updated",
+                    "message": f"✅ Experience updated to: {experience_text}",
+                    "user_id": user_id,
+                }
             else:
                 return "Failed to update experience. Please try again."
 
@@ -286,7 +306,11 @@ class FieldUpdateHandler:
 
             if success:
                 self.clear_updating_field(user_id)
-                return f"✅ Work style updated to: {', '.join(standardized_styles)}\n\nType 'settings' to update more fields or 'menu' for main menu."
+                return {
+                    "type": "field_updated",
+                    "message": f"✅ Work style updated to: {', '.join(standardized_styles)}",
+                    "user_id": user_id,
+                }
             else:
                 return "Failed to update work style. Please try again."
 
