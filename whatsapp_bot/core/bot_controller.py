@@ -173,7 +173,7 @@ class BotController:
                     user_message, phone_number, user_id
                 )
 
-                # Handle field update completion with preference menu
+                # Handle field update completion with custom buttons
                 if (
                     isinstance(response, dict)
                     and response.get("type") == "field_updated"
@@ -183,9 +183,9 @@ class BotController:
                         phone_number, response["message"]
                     )
 
-                    # Then show preference update menu with buttons
-                    return self.interactive_handler.show_preference_update_menu(
-                        phone_number, response["user_id"], None
+                    # Show custom field update completion menu
+                    return self._show_field_update_completion_menu(
+                        phone_number, response["user_id"]
                     )
 
                 return response
@@ -199,6 +199,95 @@ class BotController:
         except Exception as e:
             logger.error(f"❌ Error handling message: {e}")
             return "Something went wrong. Type 'menu' to see options."
+
+    def _show_field_update_completion_menu(
+        self, phone_number: str, user_id: int
+    ) -> str:
+        """Show custom menu after field update completion"""
+        try:
+            # Get current preferences to display
+            user_prefs = self.pref_manager.get_preferences(user_id)
+
+            # Get user's name for personalization
+            cursor = self.db.connection.cursor()
+            cursor.execute("SELECT name FROM users WHERE id = %s", (user_id,))
+            user_name_result = cursor.fetchone()
+            user_name = (
+                user_name_result[0].split()[0]
+                if user_name_result and user_name_result[0]
+                else "there"
+            )
+
+            if user_prefs:
+                # Format current preferences
+                job_roles = user_prefs.get("job_roles", [])
+                job_roles_str = (
+                    ", ".join(job_roles)
+                    if job_roles and isinstance(job_roles, list)
+                    else "Not set"
+                )
+
+                locations = user_prefs.get("preferred_locations", [])
+                locations_str = (
+                    ", ".join(locations)
+                    if locations and isinstance(locations, list)
+                    else "Not set"
+                )
+
+                work_arrangements = user_prefs.get("work_arrangements", [])
+                work_style_str = (
+                    ", ".join(work_arrangements)
+                    if work_arrangements and isinstance(work_arrangements, list)
+                    else "Not set"
+                )
+
+                salary_min = user_prefs.get("salary_min")
+                salary_currency = user_prefs.get("salary_currency", "NGN")
+                salary_str = (
+                    f"₦{salary_min:,}+ {salary_currency}" if salary_min else "Not set"
+                )
+
+                experience = user_prefs.get("years_of_experience")
+                experience_str = f"{experience} years" if experience else "Not set"
+
+                current_summary = (
+                    f"👤 *Name:* {user_name_result[0] if user_name_result and user_name_result[0] else 'Not set'}\n"
+                    f"🎯 *Looking for:* {job_roles_str}\n"
+                    f"📍 *Location:* {locations_str}\n"
+                    f"💰 *Salary:* {salary_str}\n"
+                    f"⏱️ *Experience:* {experience_str}\n"
+                    f"🏢 *Work Style:* {work_style_str}"
+                )
+
+                # Custom buttons for field update completion
+                buttons = [
+                    {
+                        "type": "reply",
+                        "reply": {"id": "update_form", "title": "📝 Continue Updating"},
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {"id": "main_menu", "title": "📋 Main Menu"},
+                    },
+                ]
+
+                message = (
+                    f"⚙️ *Hi {user_name}! Update Your Preferences*\n\n"
+                    f"Your current job preferences:\n\n"
+                    f"{current_summary}\n\n"
+                    "What would you like to do?"
+                )
+
+                success = self.whatsapp_service.send_button_menu(
+                    phone_number, message, buttons
+                )
+                return "" if success else "Menu sent!"
+            else:
+                return "Please set up your preferences first. Type 'settings'."
+
+        except Exception as e:
+            logger.error(f"❌ Error showing field update completion menu: {e}")
+            return "Type 'settings' to update more fields or 'menu' for main menu."
 
     def handle_interactive_message(
         self, phone_number: str, interactive_data: dict
