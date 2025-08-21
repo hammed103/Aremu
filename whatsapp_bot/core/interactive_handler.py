@@ -169,6 +169,29 @@ class InteractiveHandler:
             elif button_id == "clear_all_prefs":
                 return self.handle_clear_all_preferences(user_id, phone_number)
 
+            # Handle guided setup completion buttons
+            elif button_id == "show_jobs":
+                user_prefs = self.pref_manager.get_preferences(user_id)
+                if user_prefs and user_prefs.get("preferences_confirmed"):
+                    return self.job_search_handler.handle_job_search(
+                        user_prefs, user_id, phone_number
+                    )
+                else:
+                    return "Please complete your preferences setup first."
+
+            elif button_id == "menu":
+                return self.show_main_menu(phone_number)
+
+            # Handle follow-up job search buttons
+            elif button_id == "more_jobs":
+                user_prefs = self.pref_manager.get_preferences(user_id)
+                if user_prefs and user_prefs.get("preferences_confirmed"):
+                    return self.job_search_handler.handle_job_search(
+                        user_prefs, user_id, phone_number
+                    )
+                else:
+                    return "Please complete your preferences setup first."
+
             elif button_id == "main_menu":
                 return self.show_main_menu(phone_number)
 
@@ -263,11 +286,24 @@ class InteractiveHandler:
             )
 
             work_arrangements = existing_prefs.get("work_arrangements", [])
-            work_style_str = (
-                ", ".join(work_arrangements)
-                if work_arrangements and isinstance(work_arrangements, list)
-                else "❌ Not set"
-            )
+            if work_arrangements and isinstance(work_arrangements, list):
+                # Check if user selected all arrangements (flexible)
+                all_arrangements = {"remote", "on-site", "hybrid"}
+                user_arrangements = set(work_arrangements)
+
+                if user_arrangements == all_arrangements:
+                    work_style_str = "Flexible (All)"
+                else:
+                    # Convert enum values to display format
+                    display_arrangements = []
+                    for arrangement in work_arrangements:
+                        if arrangement == "on-site":
+                            display_arrangements.append("Onsite")
+                        else:
+                            display_arrangements.append(arrangement.title())
+                    work_style_str = ", ".join(display_arrangements)
+            else:
+                work_style_str = "❌ Not set"
 
             # Use name from users table if available, otherwise from preferences
             display_name = "Not set"
@@ -304,7 +340,7 @@ class InteractiveHandler:
             )
 
             self.whatsapp_service.send_button_menu(phone_number, message, buttons)
-            return "Preference update menu sent!"
+            return ""  # Don't send system message
 
         except Exception as e:
             logger.error(f"❌ Error showing preference update menu: {e}")
@@ -356,7 +392,7 @@ class InteractiveHandler:
                 sections,
             )
 
-            return "Menu sent!" if success else "Failed to send menu"
+            return "" if success else "Failed to send menu"
 
         except Exception as e:
             logger.error(f"Error showing main menu: {e}")
@@ -439,9 +475,7 @@ class InteractiveHandler:
                 phone_number, "⚙️ Update Preferences", "Choose what to update:", sections
             )
 
-            return (
-                "Preference menu sent!" if success else "Failed to send preference menu"
-            )
+            return "" if success else "Failed to send preference menu"
 
         except Exception as e:
             logger.error(f"Error showing field update menu: {e}")

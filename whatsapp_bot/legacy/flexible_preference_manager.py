@@ -201,10 +201,13 @@ class FlexiblePreferenceManager:
             if (
                 "work_arrangement" in raw_preferences
                 or "location_preference" in raw_preferences
+                or "work_arrangements" in raw_preferences
             ):
-                work_input = raw_preferences.get(
-                    "work_arrangement"
-                ) or raw_preferences.get("location_preference")
+                work_input = (
+                    raw_preferences.get("work_arrangement")
+                    or raw_preferences.get("location_preference")
+                    or raw_preferences.get("work_arrangements")
+                )
                 arrangements = self._standardize_work_arrangements(work_input)
                 if arrangements:
                     standardized["work_arrangements"] = arrangements
@@ -258,9 +261,15 @@ class FlexiblePreferenceManager:
                         logger.warning(f"Invalid {field}: {raw_preferences[field]}")
 
             # LOCATION PREFERENCES - Accept any location
-            if "location" in raw_preferences or "preferred_location" in raw_preferences:
-                location_input = raw_preferences.get("location") or raw_preferences.get(
-                    "preferred_location"
+            if (
+                "location" in raw_preferences
+                or "preferred_location" in raw_preferences
+                or "preferred_locations" in raw_preferences
+            ):
+                location_input = (
+                    raw_preferences.get("location")
+                    or raw_preferences.get("preferred_location")
+                    or raw_preferences.get("preferred_locations")
                 )
                 locations = self._standardize_locations_flexible(location_input)
                 if locations:
@@ -428,7 +437,26 @@ class FlexiblePreferenceManager:
         self, arrangement_input: Union[str, List[str]]
     ) -> List[str]:
         """Standardize work arrangements"""
-        if isinstance(arrangement_input, str):
+        if isinstance(arrangement_input, list):
+            # Handle list input (from guided setup and update form)
+            valid_arrangements = []
+            for arrangement in arrangement_input:
+                if isinstance(arrangement, str):
+                    clean_arrangement = arrangement.strip().lower()
+                    # Map title case to lowercase enum values
+                    arrangement_map = {
+                        "remote": "remote",
+                        "onsite": "on-site",
+                        "hybrid": "hybrid",
+                    }
+                    mapped_arrangement = arrangement_map.get(
+                        clean_arrangement, clean_arrangement
+                    )
+                    if mapped_arrangement in self.VALID_WORK_ARRANGEMENTS:
+                        valid_arrangements.append(mapped_arrangement)
+            return valid_arrangements
+
+        elif isinstance(arrangement_input, str):
             arrangement = arrangement_input.strip().lower()
 
             # Map variations

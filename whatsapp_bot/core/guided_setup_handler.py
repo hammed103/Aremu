@@ -78,7 +78,9 @@ class GuidedSetupHandler:
 
             current_step = result[0]
 
-            if current_step == "job_title":
+            if current_step == "name":
+                return self._handle_name_step(user_message, user_id)
+            elif current_step == "job_title":
                 return self._handle_job_title_step(user_message, user_id)
             elif current_step == "location":
                 return self._handle_location_step(user_message, user_id)
@@ -95,6 +97,25 @@ class GuidedSetupHandler:
             logger.error(f"Error in guided setup: {e}")
             return "Something went wrong. Type 'settings' to start over."
 
+    def _handle_name_step(self, user_message: str, user_id: int) -> str:
+        """Handle name step in guided setup"""
+        # Save name to users table and move to job title step
+        name = user_message.strip()
+        if not name or len(name) < 2:
+            return "Please enter a valid name (at least 2 characters)."
+
+        # Save name to users table
+        cursor = self.db.connection.cursor()
+        cursor.execute(
+            "UPDATE users SET name = %s WHERE id = %s",
+            (name, user_id),
+        )
+        self.db.connection.commit()
+
+        # Move to job title step
+        self.set_guided_setup_state(user_id, "job_title")
+        return f"✅ Nice to meet you, {name.split()[0]}!\n\n🎯 What type of job are you looking for? (e.g., Software Developer, Marketing Manager, etc.)"
+
     def _handle_job_title_step(self, user_message: str, user_id: int) -> str:
         """Handle job title step in guided setup"""
         # Save job title and move to next step
@@ -108,7 +129,7 @@ class GuidedSetupHandler:
 
     def _handle_location_step(self, user_message: str, user_id: int) -> str:
         """Handle location step in guided setup"""
-        # Save location and move to salary step
+        # Save location and move to salary step - use same field name as update form
         locations = [loc.strip() for loc in user_message.split(",")]
         preferences = {"location": locations}
         self.pref_manager.save_preferences(user_id, preferences)
@@ -150,13 +171,43 @@ class GuidedSetupHandler:
         experience_text = (
             "Entry level" if years == 0 else f"{years} year{'s' if years != 1 else ''}"
         )
-        return f"✅ {experience_text} experience noted.\n\n🏢 What's your preferred work arrangement? (e.g., Remote, Onsite, Hybrid)"
+        return (
+            f"✅ {experience_text} experience noted.\n\n"
+            "🏢 What's your preferred work arrangement?\n\n"
+            "1️⃣ Remote\n"
+            "2️⃣ Onsite\n"
+            "3️⃣ Hybrid\n"
+            "4️⃣ Flexible\n\n"
+            "Reply with a number (1-4):"
+        )
 
     def _handle_work_style_step(self, user_message: str, user_id: int) -> str:
         """Handle work style step in guided setup - final step"""
-        # Save work style and finish setup
-        work_styles = [style.strip().title() for style in user_message.split(",")]
-        preferences = {"work_arrangements": work_styles, "preferences_confirmed": True}
+        # Map number choices to work arrangements - use same format as update form
+        user_choice = user_message.strip()
+
+        if user_choice == "1":
+            work_arrangements = ["Remote"]
+            work_style_display = "Remote"
+        elif user_choice == "2":
+            work_arrangements = ["Onsite"]
+            work_style_display = "Onsite"
+        elif user_choice == "3":
+            work_arrangements = ["Hybrid"]
+            work_style_display = "Hybrid"
+        elif user_choice == "4":
+            # Flexible means all work arrangements
+            work_arrangements = ["Remote", "Onsite", "Hybrid"]
+            work_style_display = "Flexible (All)"
+        else:
+            # Default to flexible (all arrangements) for any other input
+            work_arrangements = ["Remote", "Onsite", "Hybrid"]
+            work_style_display = "Flexible (All)"
+
+        preferences = {
+            "work_arrangements": work_arrangements,
+            "preferences_confirmed": True,
+        }
         self.pref_manager.save_preferences(user_id, preferences)
 
         # Clear guided setup state
@@ -170,14 +221,90 @@ class GuidedSetupHandler:
         # Start window for job monitoring
         self.window_manager.start_new_window(user_id)
 
-        return (
+        # Get all saved preferences for display
+        saved_prefs = self.pref_manager.get_preferences(user_id)
+
+        # Get user's name
+        cursor = self.db.connection.cursor()
+        cursor.execute("SELECT name FROM users WHERE id = %s", (user_id,))
+        user_name_result = cursor.fetchone()
+        user_name = (
+            user_name_result[0]
+            if user_name_result and user_name_result[0]
+            else "Not set"
+        )
+
+        # Format all preferences
+        job_roles = saved_prefs.get("job_roles", [])
+        job_roles_str = ", ".join(job_roles) if job_roles else "Not set"
+
+        locations = saved_prefs.get("preferred_locations", [])
+        locations_str = ", ".join(locations) if locations else "Not set"
+
+        salary_min = saved_prefs.get("salary_min", 0)
+        salary_currency = saved_prefs.get("salary_currency", "NGN")
+        salary_str = f"₦{salary_min:,}+ {salary_currency}" if salary_min else "Not set"
+
+        experience = saved_prefs.get("years_of_experience")
+        if experience == 0:
+            experience_str = "Entry level"
+        elif experience:
+            experience_str = f"{experience} year{'s' if experience != 1 else ''}"
+        else:
+            experience_str = "Not set"
+
+        # Send completion message with reply buttons
+        completion_message = (
             f"🎉 Perfect! Setup complete!\n\n"
             f"✅ Your preferences:\n"
-            f"• Job: {', '.join(work_styles)}\n"
-            f"• Work style: {', '.join(work_styles)}\n\n"
+            f"👤 Name: {user_name}\n"
+            f"🎯 Job: {job_roles_str}\n"
+            f"📍 Location: {locations_str}\n"
+            f"💰 Salary: {salary_str}\n"
+            f"⏱️ Experience: {experience_str}\n"
+            f"🏢 Work style: {work_style_display}\n\n"
             "I'm now actively searching for jobs that match your criteria. "
-            "You'll get instant notifications when perfect opportunities appear!\n\n"
-            "Type 'menu' and select 'Show Jobs' to see current matches!"
+            "You'll get instant notifications when perfect opportunities appear!"
+        )
+
+        # Send message with reply buttons
+        try:
+            # Get user's phone number for sending buttons
+            cursor = self.db.connection.cursor()
+            cursor.execute("SELECT phone_number FROM users WHERE id = %s", (user_id,))
+            phone_result = cursor.fetchone()
+
+            if phone_result and phone_result[0]:
+                phone_number = phone_result[0]
+
+                # Import WhatsApp service here to avoid circular imports
+                from services.whatsapp_service import WhatsAppService
+                import os
+
+                whatsapp_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
+                whatsapp_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+                whatsapp_service = WhatsAppService(whatsapp_token, whatsapp_phone_id)
+
+                # Send message with reply buttons
+                success = whatsapp_service.send_interactive_buttons(
+                    phone_number,
+                    completion_message,
+                    [
+                        {"id": "show_jobs", "title": "🔍 Show Jobs"},
+                        {"id": "menu", "title": "📋 Main Menu"},
+                    ],
+                )
+
+                if success:
+                    return ""  # Don't send system message
+
+        except Exception as e:
+            logger.error(f"Error sending completion buttons: {e}")
+
+        # Fallback to text message if buttons fail
+        return (
+            completion_message
+            + "\n\nType 'menu' for main menu or 'show jobs' to see matches!"
         )
 
     def clear_guided_setup_state(self, user_id: int) -> bool:
@@ -196,11 +323,11 @@ class GuidedSetupHandler:
 
     def start_guided_setup(self, user_id: int) -> str:
         """Start guided setup flow"""
-        self.set_guided_setup_state(user_id, "job_title")
+        self.set_guided_setup_state(user_id, "name")
         return (
             "🎯 *Guided Setup*\n\n"
             "I'll ask you a few questions to set up your perfect job search.\n\n"
-            "Let's start: What type of job are you looking for? (e.g., Software Developer, Marketing Manager, etc.)"
+            "Let's start: What's your full name?"
         )
 
     def welcome_new_user_setup(
@@ -223,7 +350,7 @@ class GuidedSetupHandler:
         )
 
         whatsapp_service.send_button_menu(phone_number, welcome_message, buttons)
-        return "Welcome setup sent!"
+        return ""  # Don't send system message
 
     def resume_incomplete_setup(
         self, phone_number: str, user_id: int, prefs: dict, whatsapp_service

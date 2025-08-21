@@ -82,6 +82,14 @@ class JobSearchHandler:
                                 message.get("company"),
                                 message.get("job_title"),
                             )
+                        elif (
+                            isinstance(message, dict)
+                            and message.get("type") == "follow_up_buttons"
+                        ):
+                            # Send follow-up message with interactive buttons
+                            self.whatsapp_service.send_interactive_buttons(
+                                phone_number, message["message"], message["buttons"]
+                            )
                         else:
                             # Send regular text message
                             self.whatsapp_service.send_message(phone_number, message)

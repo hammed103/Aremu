@@ -77,6 +77,20 @@ def run_reminder_daemon():
                 time.sleep(60)  # Wait 1 minute on error
 
 
+# Helper functions
+def _is_system_message(response: str) -> bool:
+    """Check if response is a system message that shouldn't be sent to user"""
+    system_messages = [
+        "Menu sent!",
+        "Welcome setup sent!",
+        "Setup completion with buttons sent!",
+        "Preferences confirmed with options sent!",
+        "Resume setup sent!",
+        "Preference update menu sent!",
+    ]
+    return any(msg in response for msg in system_messages)
+
+
 # Flask Routes
 @app.route("/webhook", methods=["GET"])
 def webhook_get():
@@ -104,8 +118,8 @@ def webhook():
                                     phone_number, interactive_data
                                 )
 
-                                # Send response
-                                if response and "Menu sent!" not in response:
+                                # Send response only if it's not a system message
+                                if response and not _is_system_message(response):
                                     bot_controller.whatsapp_service.send_message(
                                         phone_number, response
                                     )
@@ -117,8 +131,8 @@ def webhook():
                                     phone_number, user_message
                                 )
 
-                                # Send response if it's not a menu
-                                if response and "Menu sent!" not in response:
+                                # Send response only if it's not a system message
+                                if response and not _is_system_message(response):
                                     bot_controller.whatsapp_service.send_message(
                                         phone_number, response
                                     )

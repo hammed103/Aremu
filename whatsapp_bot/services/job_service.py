@@ -99,11 +99,16 @@ class JobService:
                 }
                 job_messages.append(job_data)
 
-            # Add follow-up message to encourage more job requests
-            follow_up_message = (
-                "💬 Type 'menu' → 'Show Jobs' again to see more recent opportunities!"
-            )
-            job_messages.append(follow_up_message)
+            # Add follow-up message with interactive buttons
+            follow_up_data = {
+                "type": "follow_up_buttons",
+                "message": "💬 Want to see more opportunities?",
+                "buttons": [
+                    {"id": "more_jobs", "title": "🔍 More Jobs"},
+                    {"id": "menu", "title": "📋 Main Menu"},
+                ],
+            }
+            job_messages.append(follow_up_data)
 
             # Track that these jobs have been shown to the user
             self._save_shown_jobs(

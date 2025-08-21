@@ -113,22 +113,19 @@ class FieldUpdateHandler:
     def clear_updating_field(self, user_id: int) -> bool:
         """Clear the updating field after update is complete"""
         try:
-            conn = self.db.get_connection()
-            try:
-                cursor = conn.cursor()
-                # First ensure user_preferences record exists
-                cursor.execute(
-                    """
-                    INSERT INTO user_preferences (user_id, updating_field)
-                    VALUES (%s, NULL)
-                    ON CONFLICT (user_id)
-                    DO UPDATE SET updating_field = NULL
-                    """,
-                    (user_id,),
-                )
-                return True
-            finally:
-                self.db.return_connection(conn)
+            cursor = self.db.connection.cursor()
+            # First ensure user_preferences record exists
+            cursor.execute(
+                """
+                INSERT INTO user_preferences (user_id, updating_field)
+                VALUES (%s, NULL)
+                ON CONFLICT (user_id)
+                DO UPDATE SET updating_field = NULL
+                """,
+                (user_id,),
+            )
+            self.db.connection.commit()
+            return True
         except Exception as e:
             logger.error(f"Error clearing updating field: {e}")
             return False
@@ -141,19 +138,14 @@ class FieldUpdateHandler:
                 return "Please enter a valid name (at least 2 characters)."
 
             # Update only the users table (name doesn't go in user_preferences)
-            conn = self.db.get_connection()
-            try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE users SET name = %s WHERE id = %s", (name, user_id)
-                )
+            cursor = self.db.connection.cursor()
+            cursor.execute("UPDATE users SET name = %s WHERE id = %s", (name, user_id))
+            self.db.connection.commit()
 
-                # Clear the updating field state
-                self.clear_updating_field(user_id)
+            # Clear the updating field state
+            self.clear_updating_field(user_id)
 
-                return f"✅ Name updated to: {name}\n\nType 'settings' to update more fields or 'menu' for main menu."
-            finally:
-                self.db.return_connection(conn)
+            return f"✅ Name updated to: {name}\n\nType 'settings' to update more fields or 'menu' for main menu."
 
         except Exception as e:
             logger.error(f"Error updating name: {e}")

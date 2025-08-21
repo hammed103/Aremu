@@ -125,9 +125,7 @@ class PreferenceHandler:
                 phone_number, preference_display, buttons
             )
 
-            return (
-                "Preference menu sent!" if success else "Failed to send preference menu"
-            )
+            return "" if success else "Failed to send preference menu"
 
         except Exception as e:
             logger.error(f"❌ Error showing preference buttons: {e}")
@@ -382,7 +380,7 @@ class PreferenceHandler:
                     phone_number, confirmation_message, buttons
                 )
 
-            return "Preferences confirmed with options sent!"
+            return ""  # Don't send system message
 
         except Exception as e:
             logger.error(f"❌ Error confirming preferences: {e}")
