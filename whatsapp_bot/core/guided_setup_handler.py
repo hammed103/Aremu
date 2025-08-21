@@ -309,7 +309,10 @@ class GuidedSetupHandler:
                 "type": "reply",
                 "reply": {"id": "guided_setup", "title": "🎯 Guided Setup"},
             },
-            {"type": "reply", "reply": {"id": "form_setup", "title": "📝 Quick Form"}},
+            {
+                "type": "reply",
+                "reply": {"id": "form_setup", "title": "📋 Copy Paste Form"},
+            },
             {"type": "reply", "reply": {"id": "help_setup", "title": "❓ Need Help"}},
         ]
 

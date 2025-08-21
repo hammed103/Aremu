@@ -153,7 +153,7 @@ class InteractiveHandler:
                 return self.guided_setup_handler.start_guided_setup(user_id)
 
             elif button_id == "form_setup":
-                return self.preference_handler.show_preference_form(
+                return self.preference_handler.show_traditional_preference_form(
                     phone_number, first_time=True
                 )
 

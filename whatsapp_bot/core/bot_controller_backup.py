@@ -94,7 +94,9 @@ class BotController:
 
             # Check if user is updating a specific preference field
             if self._is_updating_preference_field(user_id):
-                return self._handle_preference_field_update(user_message, phone_number, user_id)
+                return self._handle_preference_field_update(
+                    user_message, phone_number, user_id
+                )
 
             # Handle normal conversation using AI agent
             user_prefs = self.pref_manager.get_preferences(user_id)
@@ -167,7 +169,8 @@ class BotController:
             )
             experience = (
                 f"{current_prefs.get('years_of_experience')} years"
-                if current_prefs and current_prefs.get("years_of_experience") is not None
+                if current_prefs
+                and current_prefs.get("years_of_experience") is not None
                 else "Not set"
             )
             work_style = (
@@ -197,48 +200,45 @@ class BotController:
                         {
                             "id": "update_name",
                             "title": "👤 Full Name",
-                            "description": f"Current: {current_name}"
+                            "description": f"Current: {current_name}",
                         },
                         {
                             "id": "update_job_title",
                             "title": "🎯 Job Title",
-                            "description": f"Current: {job_title}"
+                            "description": f"Current: {job_title}",
                         },
                         {
                             "id": "update_location",
                             "title": "📍 Location",
-                            "description": f"Current: {location}"
+                            "description": f"Current: {location}",
                         },
                         {
                             "id": "update_salary",
                             "title": "💰 Minimum Salary",
-                            "description": f"Current: {salary}"
+                            "description": f"Current: {salary}",
                         },
                         {
                             "id": "update_experience",
                             "title": "⏱️ Experience",
-                            "description": f"Current: {experience}"
+                            "description": f"Current: {experience}",
                         },
                         {
                             "id": "update_work_style",
                             "title": "🏢 Work Style",
-                            "description": f"Current: {work_style}"
+                            "description": f"Current: {work_style}",
                         },
                         {
                             "id": "confirm_preferences",
                             "title": "✅ Confirm & Save",
-                            "description": "Save these preferences"
-                        }
-                    ]
+                            "description": "Save these preferences",
+                        },
+                    ],
                 }
             ]
 
             # Try interactive menu first, fallback to buttons if it fails
             success = self.whatsapp_service.send_list_menu(
-                phone_number,
-                "Update Preferences",
-                "Choose what to update:",
-                sections
+                phone_number, "Update Preferences", "Choose what to update:", sections
             )
 
             if success:
@@ -252,7 +252,9 @@ class BotController:
             logger.error(f"❌ Error showing preference form: {e}")
             return "I'm having trouble showing the form. Please try typing 'settings' again."
 
-    def _show_preference_buttons(self, phone_number: str, preference_display: str) -> str:
+    def _show_preference_buttons(
+        self, phone_number: str, preference_display: str
+    ) -> str:
         """Show preference options using button menu as fallback"""
         try:
             buttons = [
@@ -271,18 +273,24 @@ class BotController:
 
             # Then send the button menu
             success = self.whatsapp_service.send_button_menu(
-                phone_number,
-                "What would you like to do?",
-                buttons
+                phone_number, "What would you like to do?", buttons
             )
 
-            return "Preference update menu sent!" if success else "Failed to send preference menu"
+            return (
+                "Preference update menu sent!"
+                if success
+                else "Failed to send preference menu"
+            )
 
         except Exception as e:
             logger.error(f"❌ Error showing preference buttons: {e}")
-            return self._show_traditional_preference_form(phone_number, first_time=False)
+            return self._show_traditional_preference_form(
+                phone_number, first_time=False
+            )
 
-    def _show_traditional_preference_form(self, phone_number: str, first_time: bool = False) -> str:
+    def _show_traditional_preference_form(
+        self, phone_number: str, first_time: bool = False
+    ) -> str:
         """Show traditional copy-paste preference form as fallback"""
         try:
             user_id = self.db.get_or_create_user(phone_number)
@@ -426,14 +434,26 @@ class BotController:
             name_part = f"Hi {user_name}! " if user_name != "there" else "Hi! "
 
             # Safe array handling for confirmation
-            job_roles = preferences.get('job_roles', [])
-            job_roles_str = ', '.join(job_roles) if job_roles and isinstance(job_roles, list) else 'Not set'
+            job_roles = preferences.get("job_roles", [])
+            job_roles_str = (
+                ", ".join(job_roles)
+                if job_roles and isinstance(job_roles, list)
+                else "Not set"
+            )
 
-            locations = preferences.get('preferred_locations', [])
-            locations_str = ', '.join(locations) if locations and isinstance(locations, list) else 'Not set'
+            locations = preferences.get("preferred_locations", [])
+            locations_str = (
+                ", ".join(locations)
+                if locations and isinstance(locations, list)
+                else "Not set"
+            )
 
-            work_arrangements = preferences.get('work_arrangements', [])
-            work_style_str = ', '.join(work_arrangements) if work_arrangements and isinstance(work_arrangements, list) else 'Not set'
+            work_arrangements = preferences.get("work_arrangements", [])
+            work_style_str = (
+                ", ".join(work_arrangements)
+                if work_arrangements and isinstance(work_arrangements, list)
+                else "Not set"
+            )
 
             confirmation_msg = (
                 f"{name_part}I've saved your job preferences:\n\n"
@@ -511,9 +531,7 @@ class BotController:
             if phone_result:
                 phone_number = phone_result[0]
                 self.whatsapp_service.send_button_menu(
-                    phone_number,
-                    confirmation_message,
-                    buttons
+                    phone_number, confirmation_message, buttons
                 )
 
             return "Preferences confirmed with options sent!"
@@ -538,7 +556,7 @@ class BotController:
 
             cursor.execute(
                 "SELECT updating_field FROM user_preferences WHERE user_id = %s",
-                (user_id,)
+                (user_id,),
             )
             result = cursor.fetchone()
             return result and result[0] is not None
@@ -546,14 +564,16 @@ class BotController:
             logger.error(f"Error checking updating field: {e}")
             return False
 
-    def _handle_preference_field_update(self, user_message: str, phone_number: str, user_id: int) -> str:
+    def _handle_preference_field_update(
+        self, user_message: str, phone_number: str, user_id: int
+    ) -> str:
         """Handle updates to specific preference fields"""
         try:
             # Get which field is being updated
             cursor = self.db.connection.cursor()
             cursor.execute(
                 "SELECT updating_field FROM user_preferences WHERE user_id = %s",
-                (user_id,)
+                (user_id,),
             )
             result = cursor.fetchone()
 
@@ -622,12 +642,12 @@ class BotController:
             )
 
             success = self.whatsapp_service.send_button_menu(
-                phone_number,
-                confirmation_message,
-                buttons
+                phone_number, confirmation_message, buttons
             )
 
-            return "Clear confirmation sent!" if success else "Failed to send confirmation"
+            return (
+                "Clear confirmation sent!" if success else "Failed to send confirmation"
+            )
 
         except Exception as e:
             logger.error(f"Error handling clear all preferences: {e}")
@@ -648,7 +668,7 @@ class BotController:
                     SET updating_field = NULL, guided_setup_step = NULL
                     WHERE user_id = %s
                     """,
-                    (user_id,)
+                    (user_id,),
                 )
                 self.db.connection.commit()
 
@@ -663,7 +683,9 @@ class BotController:
 
         except Exception as e:
             logger.error(f"Error executing clear all preferences: {e}")
-            return "Something went wrong clearing preferences. Type 'menu' to try again."
+            return (
+                "Something went wrong clearing preferences. Type 'menu' to try again."
+            )
 
     def _set_guided_setup_state(self, user_id: int, step: str) -> bool:
         """Set guided setup state for user"""
@@ -686,7 +708,7 @@ class BotController:
                 ON CONFLICT (user_id)
                 DO UPDATE SET guided_setup_step = EXCLUDED.guided_setup_step
                 """,
-                (user_id, step)
+                (user_id, step),
             )
             self.db.connection.commit()
             return True
@@ -700,7 +722,7 @@ class BotController:
             cursor = self.db.connection.cursor()
             cursor.execute(
                 "SELECT guided_setup_step FROM user_preferences WHERE user_id = %s",
-                (user_id,)
+                (user_id,),
             )
             result = cursor.fetchone()
             return result and result[0] is not None
@@ -714,7 +736,7 @@ class BotController:
             cursor = self.db.connection.cursor()
             cursor.execute(
                 "SELECT guided_setup_step FROM user_preferences WHERE user_id = %s",
-                (user_id,)
+                (user_id,),
             )
             result = cursor.fetchone()
 
@@ -725,7 +747,7 @@ class BotController:
 
             if current_step == "job_title":
                 # Save job title and move to next step
-                job_titles = [title.strip() for title in user_message.split(',')]
+                job_titles = [title.strip() for title in user_message.split(",")]
                 preferences = {"job_roles": job_titles}
                 self.pref_manager.save_preferences(user_id, preferences)
 
@@ -735,7 +757,7 @@ class BotController:
 
             elif current_step == "location":
                 # Save location and move to salary step
-                locations = [loc.strip() for loc in user_message.split(',')]
+                locations = [loc.strip() for loc in user_message.split(",")]
                 preferences = {"preferred_locations": locations}
                 self.pref_manager.save_preferences(user_id, preferences)
 
@@ -744,24 +766,31 @@ class BotController:
 
             elif current_step == "salary":
                 # Save salary and move to experience step
-                salary_match = re.search(r'[\d,]+', user_message.replace('₦', '').replace(',', ''))
+                salary_match = re.search(
+                    r"[\d,]+", user_message.replace("₦", "").replace(",", "")
+                )
                 if salary_match:
-                    salary_amount = int(salary_match.group().replace(',', ''))
-                    preferences = {"salary_min": salary_amount, "salary_currency": "NGN"}
+                    salary_amount = int(salary_match.group().replace(",", ""))
+                    preferences = {
+                        "salary_min": salary_amount,
+                        "salary_currency": "NGN",
+                    }
                     self.pref_manager.save_preferences(user_id, preferences)
 
                     self._set_guided_setup_state(user_id, "experience")
                     return f"✅ Got it! Minimum ₦{salary_amount:,}.\n\n⏱️ How many years of experience do you have? (e.g., 3 years or Entry level)"
                 else:
-                    return "Please enter a valid salary amount (e.g., ₦500,000 or 500000)"
+                    return (
+                        "Please enter a valid salary amount (e.g., ₦500,000 or 500000)"
+                    )
 
             elif current_step == "experience":
                 # Save experience and move to work style step
                 message_lower = user_message.lower()
-                if 'entry' in message_lower or 'fresh' in message_lower:
+                if "entry" in message_lower or "fresh" in message_lower:
                     years = 0
                 else:
-                    years_match = re.search(r'(\d+)', user_message)
+                    years_match = re.search(r"(\d+)", user_message)
                     years = int(years_match.group(1)) if years_match else 1
 
                 preferences = {"years_of_experience": years}
@@ -773,14 +802,19 @@ class BotController:
 
             elif current_step == "work_style":
                 # Save work style and finish setup
-                work_styles = [style.strip().title() for style in user_message.split(',')]
-                preferences = {"work_arrangements": work_styles, "preferences_confirmed": True}
+                work_styles = [
+                    style.strip().title() for style in user_message.split(",")
+                ]
+                preferences = {
+                    "work_arrangements": work_styles,
+                    "preferences_confirmed": True,
+                }
                 self.pref_manager.save_preferences(user_id, preferences)
 
                 # Clear guided setup state
                 cursor.execute(
                     "UPDATE user_preferences SET guided_setup_step = NULL WHERE user_id = %s",
-                    (user_id,)
+                    (user_id,),
                 )
                 self.db.connection.commit()
 
@@ -818,7 +852,7 @@ class BotController:
                 ON CONFLICT (user_id)
                 DO UPDATE SET updating_field = EXCLUDED.updating_field
                 """,
-                (user_id, field_name)
+                (user_id, field_name),
             )
             self.db.connection.commit()
             return True
@@ -832,7 +866,7 @@ class BotController:
             cursor = self.db.connection.cursor()
             cursor.execute(
                 "UPDATE user_preferences SET updating_field = NULL WHERE user_id = %s",
-                (user_id,)
+                (user_id,),
             )
             self.db.connection.commit()
             return True
@@ -849,10 +883,7 @@ class BotController:
 
             # Update in users table
             cursor = self.db.connection.cursor()
-            cursor.execute(
-                "UPDATE users SET name = %s WHERE id = %s",
-                (name, user_id)
-            )
+            cursor.execute("UPDATE users SET name = %s WHERE id = %s", (name, user_id))
 
             # Update in preferences
             preferences = {"full_name": name}
@@ -871,7 +902,7 @@ class BotController:
         """Update the user's job title preferences"""
         try:
             # Parse job titles from message
-            job_titles = [title.strip() for title in user_message.split(',')]
+            job_titles = [title.strip() for title in user_message.split(",")]
             job_titles = [title for title in job_titles if title]  # Remove empty
 
             if not job_titles:
@@ -893,7 +924,7 @@ class BotController:
     def _update_location_field(self, user_message: str, user_id: int) -> str:
         """Update the user's location preferences"""
         try:
-            locations = [loc.strip() for loc in user_message.split(',')]
+            locations = [loc.strip() for loc in user_message.split(",")]
             locations = [loc for loc in locations if loc]  # Remove empty
 
             if not locations:
@@ -917,20 +948,20 @@ class BotController:
         try:
             # Extract salary amount from message
             import re
-            salary_match = re.search(r'[\d,]+', user_message.replace('₦', '').replace(',', ''))
+
+            salary_match = re.search(
+                r"[\d,]+", user_message.replace("₦", "").replace(",", "")
+            )
 
             if not salary_match:
                 return "Please enter a valid salary amount (e.g., ₦500,000 or 500000)."
 
-            salary_amount = int(salary_match.group().replace(',', ''))
+            salary_amount = int(salary_match.group().replace(",", ""))
 
             if salary_amount < 50000:
                 return "Please enter a realistic salary amount (minimum ₦50,000)."
 
-            preferences = {
-                "salary_min": salary_amount,
-                "salary_currency": "NGN"
-            }
+            preferences = {"salary_min": salary_amount, "salary_currency": "NGN"}
             success = self.pref_manager.save_preferences(user_id, preferences)
 
             if success:
@@ -941,7 +972,9 @@ class BotController:
 
         except Exception as e:
             logger.error(f"Error updating salary: {e}")
-            return "Failed to update salary. Please enter a valid amount (e.g., ₦500,000)."
+            return (
+                "Failed to update salary. Please enter a valid amount (e.g., ₦500,000)."
+            )
 
     def _update_experience_field(self, user_message: str, user_id: int) -> str:
         """Update the user's experience level"""
@@ -950,10 +983,14 @@ class BotController:
             import re
 
             message_lower = user_message.lower()
-            if 'entry' in message_lower or 'fresh' in message_lower or 'graduate' in message_lower:
+            if (
+                "entry" in message_lower
+                or "fresh" in message_lower
+                or "graduate" in message_lower
+            ):
                 years = 0
             else:
-                years_match = re.search(r'(\d+)', user_message)
+                years_match = re.search(r"(\d+)", user_message)
                 if years_match:
                     years = int(years_match.group(1))
                 else:
@@ -979,25 +1016,36 @@ class BotController:
     def _update_work_style_field(self, user_message: str, user_id: int) -> str:
         """Update the user's work style preferences"""
         try:
-            work_styles = [style.strip() for style in user_message.split(',')]
+            work_styles = [style.strip() for style in user_message.split(",")]
             work_styles = [style for style in work_styles if style]  # Remove empty
 
             if not work_styles:
                 return "Please enter at least one work style (Remote, Onsite, Hybrid)."
 
             # Validate work styles
-            valid_styles = ['remote', 'onsite', 'hybrid', 'on-site', 'work from home', 'wfh']
+            valid_styles = [
+                "remote",
+                "onsite",
+                "hybrid",
+                "on-site",
+                "work from home",
+                "wfh",
+            ]
             normalized_styles = []
 
             for style in work_styles:
                 style_lower = style.lower().strip()
                 if any(valid in style_lower for valid in valid_styles):
-                    if 'remote' in style_lower or 'wfh' in style_lower or 'work from home' in style_lower:
-                        normalized_styles.append('Remote')
-                    elif 'onsite' in style_lower or 'on-site' in style_lower:
-                        normalized_styles.append('Onsite')
-                    elif 'hybrid' in style_lower:
-                        normalized_styles.append('Hybrid')
+                    if (
+                        "remote" in style_lower
+                        or "wfh" in style_lower
+                        or "work from home" in style_lower
+                    ):
+                        normalized_styles.append("Remote")
+                    elif "onsite" in style_lower or "on-site" in style_lower:
+                        normalized_styles.append("Onsite")
+                    elif "hybrid" in style_lower:
+                        normalized_styles.append("Hybrid")
                 else:
                     normalized_styles.append(style.title())
 
@@ -1207,9 +1255,9 @@ class BotController:
                 return self._show_preference_form(phone_number, first_time=False)
 
             elif button_id == "show_traditional_form":
-                return self._show_traditional_preference_form(phone_number, first_time=False)
-
-
+                return self._show_traditional_preference_form(
+                    phone_number, first_time=False
+                )
 
             elif button_id == "reset_prefs":
                 # Clear existing preferences
@@ -1226,7 +1274,9 @@ class BotController:
                 return "🎯 *Guided Setup*\n\nI'll ask you a few questions to set up your perfect job search.\n\nLet's start: What type of job are you looking for? (e.g., Software Developer, Marketing Manager, etc.)"
 
             elif button_id == "form_setup":
-                return self._show_preference_form(phone_number, first_time=True)
+                return self._show_traditional_preference_form(
+                    phone_number, first_time=True
+                )
 
             elif button_id == "help_setup":
                 return self._show_help_info()
@@ -1284,7 +1334,9 @@ class BotController:
             # Brand new user with no preferences at all
             return self._welcome_new_user_setup(phone_number, user_id)
 
-    def _show_preference_update_menu(self, phone_number: str, user_id: int, existing_prefs: dict) -> str:
+    def _show_preference_update_menu(
+        self, phone_number: str, user_id: int, existing_prefs: dict
+    ) -> str:
         """Show update menu for users with existing confirmed preferences"""
         try:
             # Get user's name for personalization
@@ -1298,21 +1350,33 @@ class BotController:
             )
 
             # Create current preferences summary with safe array handling
-            job_roles = existing_prefs.get('job_roles', [])
-            job_roles_str = ', '.join(job_roles) if job_roles and isinstance(job_roles, list) else 'Not set'
+            job_roles = existing_prefs.get("job_roles", [])
+            job_roles_str = (
+                ", ".join(job_roles)
+                if job_roles and isinstance(job_roles, list)
+                else "Not set"
+            )
 
-            locations = existing_prefs.get('preferred_locations', [])
-            locations_str = ', '.join(locations) if locations and isinstance(locations, list) else 'Not set'
+            locations = existing_prefs.get("preferred_locations", [])
+            locations_str = (
+                ", ".join(locations)
+                if locations and isinstance(locations, list)
+                else "Not set"
+            )
 
-            work_arrangements = existing_prefs.get('work_arrangements', [])
-            work_style_str = ', '.join(work_arrangements) if work_arrangements and isinstance(work_arrangements, list) else 'Not set'
+            work_arrangements = existing_prefs.get("work_arrangements", [])
+            work_style_str = (
+                ", ".join(work_arrangements)
+                if work_arrangements and isinstance(work_arrangements, list)
+                else "Not set"
+            )
 
             # Use name from users table if available, otherwise from preferences
             display_name = "Not set"
             if user_name_result and user_name_result[0]:
                 display_name = user_name_result[0]
-            elif existing_prefs and existing_prefs.get('full_name'):
-                display_name = existing_prefs.get('full_name')
+            elif existing_prefs and existing_prefs.get("full_name"):
+                display_name = existing_prefs.get("full_name")
 
             current_summary = (
                 f"👤 **Name:** {display_name}\n"
@@ -1354,7 +1418,10 @@ class BotController:
                 "type": "reply",
                 "reply": {"id": "guided_setup", "title": "🎯 Guided Setup"},
             },
-            {"type": "reply", "reply": {"id": "form_setup", "title": "📝 Quick Form"}},
+            {
+                "type": "reply",
+                "reply": {"id": "form_setup", "title": "📋 Copy Paste Form"},
+            },
             {"type": "reply", "reply": {"id": "help_setup", "title": "❓ Need Help"}},
         ]
 
