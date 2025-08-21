@@ -57,7 +57,7 @@ class JobService:
             )
 
             # Use intelligent matcher for AI-powered job matching
-            all_jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=10)
+            all_jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=20)
             logger.info(
                 f"🔍 DEBUG - Found {len(all_jobs)} total jobs for user {user_id}"
             )
@@ -143,9 +143,9 @@ class JobService:
             }
             job_messages.append(follow_up_data)
 
-            # Track that these jobs have been shown to the user
+            # Track that these jobs have been shown to the user (only the 5 shown)
             self._save_shown_jobs(
-                user_id, [job.get("id") for job in jobs if job.get("id")]
+                user_id, [job.get("id") for job in jobs_to_show if job.get("id")]
             )
 
             return job_messages
