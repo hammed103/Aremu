@@ -85,9 +85,59 @@ def webhook_get():
 
 
 @app.route("/webhook", methods=["POST"])
-def webhook_post():
-    """Handle incoming WhatsApp messages"""
-    return webhook_handler.handle_webhook_post(request.get_json())
+def webhook():
+    """Handle WhatsApp webhook including interactive messages"""
+    try:
+        data = request.get_json()
+
+        if data.get("object") == "whatsapp_business_account":
+            for entry in data.get("entry", []):
+                for change in entry.get("changes", []):
+                    if change.get("field") == "messages":
+                        for message in change.get("value", {}).get("messages", []):
+                            phone_number = message.get("from")
+
+                            # Handle interactive messages (menu selections)
+                            if message.get("type") == "interactive":
+                                interactive_data = message.get("interactive", {})
+                                response = bot_controller.handle_interactive_message(
+                                    phone_number, interactive_data
+                                )
+
+                                # Send response
+                                if response and "Menu sent!" not in response:
+                                    bot_controller.whatsapp_service.send_message(
+                                        phone_number, response
+                                    )
+
+                            # Handle text messages
+                            elif message.get("type") == "text":
+                                user_message = message.get("text", {}).get("body", "")
+                                response = bot_controller.handle_message(
+                                    phone_number, user_message
+                                )
+
+                                # Send response if it's not a menu
+                                if response and "Menu sent!" not in response:
+                                    bot_controller.whatsapp_service.send_message(
+                                        phone_number, response
+                                    )
+
+                            # Handle document messages (for CV analyzer)
+                            elif message.get("type") == "document":
+                                # Handle CV uploads
+                                response = (
+                                    "📋 CV received! Analyzing... (Feature coming soon)"
+                                )
+                                bot_controller.whatsapp_service.send_message(
+                                    phone_number, response
+                                )
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({"status": "error"}), 500
 
 
 @app.route("/health", methods=["GET"])

@@ -220,7 +220,6 @@ class AIEnhancedJobParser:
         company = canonical_job.get("company", "")
         description = canonical_job.get("description", "")
         location = canonical_job.get("location", "")
-        job_url = canonical_job.get("job_url", "")
 
         try:
             # Enhanced AI prompt for intelligent matching
@@ -231,7 +230,6 @@ class AIEnhancedJobParser:
             Title: {title}
             Company: {company}
             Location: {location}
-            Job URL: {job_url}
             Description: {description[:1000]}...
 
             TASK: Extract comprehensive data for intelligent job matching. Return ONLY valid JSON with these fields:
@@ -266,7 +264,7 @@ class AIEnhancedJobParser:
                 "ai_whatsapp_number": "Extract phone/WhatsApp for applications (ignore support numbers)",
                 "ai_application_modes": ["Email", "WhatsApp", "Online", "LinkedIn"],
 
-                "ai_summary": "Create a clean WhatsApp job post using this EXACT format:\n\n🚀 **[Job Title]** at **[Company]**\n📍 [Location] | 💰 [Salary OR 'Competitive salary' if none] | ⏰ [Employment Type]\n\n[1-2 compelling sentences about the role]\n\n**What you'll do:**\n• [Key responsibility 1]\n• [Key responsibility 2]\n• [Key responsibility 3]\n\n**What we need:**\n• [Key requirement 1]\n• [Key requirement 2]\n• [Key requirement 3]\n\n**Why join us:**\n[Benefits/company culture from description]\n\n**Skills:** [Top 5 relevant skills]\n\n🔗 **Apply:** [Use the actual job_url provided]\n\nIMPORTANT:\n- Use REAL data from the job description\n- Replace ALL placeholders with actual content\n- Use 'Competitive salary' if no salary mentioned\n- Always end with the actual job_url for applications\n- Keep it concise and engaging for WhatsApp",
+                "ai_summary": "Create a clean WhatsApp job post using this EXACT format:\n\n🚀 **[Job Title]** at **[Company]**\n📍 [Location] | 💰 [Salary OR 'Competitive salary' if none] | ⏰ [Employment Type]\n\n[1-2 compelling sentences about the role]\n\n**What you'll do:**\n• [Key responsibility 1]\n• [Key responsibility 2]\n• [Key responsibility 3]\n\n**What we need:**\n• [Key requirement 1]\n• [Key requirement 2]\n• [Key requirement 3]\n\n**Why join us:**\n[Benefits/company culture from description]\n\n**Skills:** [Top 5 relevant skills]\n\nIMPORTANT:\n- Use REAL data from the job description\n- Replace ALL placeholders with actual content\n- Use 'Competitive salary' if no salary mentioned\n- Keep it concise and engaging for WhatsApp",
             }}
 
             CRITICAL FOR INTELLIGENT MATCHING:

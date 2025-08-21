@@ -211,7 +211,7 @@ class IntelligentJobMatcher:
             for job in all_jobs:
                 job_dict = dict(job)
                 score = self._calculate_job_score(prefs, job_dict)
-                if score > 0:  # Only include jobs with some relevance
+                if score >= 50.0:  # Only include jobs with 50%+ match
                     job_dict["match_score"] = score
                     job_dict["match_reasons"] = self._get_match_reasons(prefs, job_dict)
                     scored_jobs.append(job_dict)
@@ -234,6 +234,11 @@ class IntelligentJobMatcher:
 
     def _calculate_job_score(self, user_prefs: Dict, job: Dict) -> float:
         """Calculate AI-enhanced job match score using multiple strategies"""
+
+        # STRICT LOCATION FILTER: For non-remote jobs, location must match
+        if not self._is_location_compatible(user_prefs, job):
+            return 0.0  # Disqualify jobs with incompatible locations
+
         total_score = 0.0
 
         # 1. AI JOB TITLES MATCHING (35 points) - Enhanced with 15+ AI variations
@@ -273,6 +278,36 @@ class IntelligentJobMatcher:
         total_score += exp_score
 
         return min(total_score, 100.0)  # Cap at 100%
+
+    def _is_location_compatible(self, user_prefs: Dict, job: Dict) -> bool:
+        """Check if job location is compatible with user preferences"""
+        user_locations = user_prefs.get("preferred_locations", []) or []
+        willing_to_relocate = user_prefs.get("willing_to_relocate", False)
+
+        # If user has no location preferences, accept any job
+        if not user_locations:
+            return True
+
+        # Check if job is remote/hybrid (location doesn't matter)
+        ai_remote = job.get("ai_remote_allowed", False)
+        is_remote = job.get("remote", False)
+        location = (job.get("location", "") or "").lower()
+
+        if ai_remote or is_remote or "remote" in location or "hybrid" in location:
+            return True  # Remote jobs are always compatible
+
+        # For non-remote jobs, check location match
+        job_location = location
+        for user_location in user_locations:
+            user_loc_lower = user_location.lower()
+            if user_loc_lower in job_location:
+                return True  # Location matches
+
+        # If willing to relocate, accept any location
+        if willing_to_relocate:
+            return True
+
+        return False  # Location incompatible
 
     def _score_ai_job_titles_match(self, user_prefs: dict, job: dict) -> float:
         """Enhanced job title matching using AI job titles array"""

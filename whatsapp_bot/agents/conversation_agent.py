@@ -40,6 +40,12 @@ class ConversationAgent:
     ) -> str:
         """Generate intelligent response based on user message and context"""
         try:
+            # Check if this is a job request and handle it explicitly
+            if self._is_job_request(user_message):
+                return self._handle_job_request(
+                    user_message, user_preferences, user_name
+                )
+
             # Prepare system prompt for natural conversation
             system_prompt = self._create_system_prompt(user_preferences, user_name)
 
@@ -88,22 +94,34 @@ USER PROFILE:
 
 PERSONALITY: Friendly, helpful, CONCISE. Get straight to the point.
 
-KEY PRIORITY - JOB PREFERENCE DETECTION:
-When users mention looking for jobs (e.g., "I need software developer jobs", "I'm looking for sales roles"), IMMEDIATELY guide them to set preferences:
+KEY PRIORITY - INTELLIGENT JOB HANDLING:
+When users ask about jobs, be SMART and CONTEXTUAL about their request:
 
-"Nice! To get you job alerts for [job type], type 'settings' to set up your preferences. I'll send you matching opportunities as soon as they're available!"
+IF USER HAS MEANINGFUL PREFERENCES (has job_roles, locations, or other key fields):
+Acknowledge their job request and give them options:
+"Looking for jobs? You can:
+• Send 'menu' and select 'Show Jobs' to see current matches
+• Update preferences for different jobs
+• You'll also get instant alerts when new matching jobs are found!"
+
+IF USER HAS NO MEANINGFUL PREFERENCES (empty or minimal preferences):
+"To find [job type] jobs, type 'menu' and select 'Change Preferences' to set up your profile first!"
+
+ALWAYS acknowledge what they're asking for and be helpful about their specific request.
 
 KEEP RESPONSES SHORT:
-- 1-2 sentences maximum for most responses
 - Be helpful but not wordy
 - Focus on ACTION, not long explanations
 
 NATURAL RESPONSES:
-- Job search requests: "Type 'settings' to set up job alerts for [role]!"
-- CV requests: "Send your CV and I'll review it for the Nigerian market!"
-- Salary questions: "For [role] in Lagos: ₦X-₦Y monthly. Want specific tips?"
-- Interview help: "I can help you prepare! What's the role and company?"
-- General chat: Keep it brief and friendly
+- Greetings (hi, hello, hey): Simple friendly response, don't push jobs unless they ask
+- Job search requests: Use INTELLIGENT JOB HANDLING above based on user's preference status
+- CV requests: "Type 'menu' and select 'CV Analyzer' for professional CV review!"
+- Salary questions: "For [role] in Lagos: ₦X-₊Y monthly. Want specific tips?"
+- Interview help: "Type 'menu' and select 'Interview Assistant' for interview preparation!"
+- General chat: Keep it brief and friendly and helpful
+
+IMPORTANT: Don't push job search on simple greetings. Only mention jobs when users specifically ask about jobs/work/employment or when that process would be helpful.
 
 
 
@@ -128,6 +146,107 @@ CRITICAL RULES:
 - Be helpful but BRIEF
 
 Focus on ACTIONS, not words!"""
+
+    def _is_job_request(self, user_message: str) -> bool:
+        """Check if user message is asking about jobs"""
+        job_keywords = [
+            "job",
+            "jobs",
+            "work",
+            "employment",
+            "position",
+            "role",
+            "opportunity",
+            "opportunities",
+            "vacancy",
+            "vacancies",
+            "hiring",
+            "career",
+            "opening",
+            "openings",
+        ]
+
+        message_lower = user_message.lower()
+
+        # Check for job-related keywords
+        for keyword in job_keywords:
+            if keyword in message_lower:
+                return True
+
+        return False
+
+    def _has_meaningful_preferences(self, user_prefs: dict) -> bool:
+        """Check if user has meaningful preferences set (regardless of confirmation status)"""
+        if not user_prefs:
+            return False
+
+        # Check for key preference fields that indicate user has set up their profile
+        meaningful_fields = [
+            "job_roles",
+            "preferred_locations",
+            "work_arrangements",
+            "years_of_experience",
+            "salary_min",
+        ]
+
+        for field in meaningful_fields:
+            value = user_prefs.get(field)
+            if value is not None:
+                # For lists, check if not empty
+                if isinstance(value, list) and len(value) > 0:
+                    return True
+                # For non-lists, check if not empty/zero
+                elif not isinstance(value, list) and value:
+                    return True
+
+        return False
+
+    def _handle_job_request(
+        self, user_message: str, user_preferences: dict, user_name: str = None
+    ) -> str:
+        """Handle job requests with explicit preference checking"""
+        # Extract job type from message if mentioned
+        job_type = self._extract_job_type(user_message)
+
+        # Make responses more natural and action-oriented
+        message_lower = user_message.lower()
+
+        if self._has_meaningful_preferences(user_preferences):
+            # User has preferences - be more direct and helpful
+            if "new" in message_lower:
+                return f"Ready to find {job_type + ' ' if job_type else ''}jobs? Type 'menu' and select 'Show Jobs' to see the latest opportunities!"
+            else:
+                return f"Let me help you find {job_type + ' ' if job_type else ''}jobs! Type 'menu' and select 'Show Jobs' to see current matches."
+        else:
+            # New user with no preferences - be encouraging and direct
+            if job_type:
+                return f"I'd love to help you find {job_type} jobs! First, type 'menu' and select 'Change Preferences' to set up your profile - it takes just 2 minutes!"
+            else:
+                return "I can help you find great jobs! Type 'menu' and select 'Change Preferences' to set up your profile first - it's quick and easy!"
+
+    def _extract_job_type(self, user_message: str) -> str:
+        """Extract job type from user message"""
+        message_lower = user_message.lower()
+
+        # Common job type patterns
+        job_patterns = {
+            "pm": "project management",
+            "project management": "project management",
+            "product management": "product management",
+            "software": "software development",
+            "developer": "development",
+            "marketing": "marketing",
+            "sales": "sales",
+            "cybersecurity": "cybersecurity",
+            "data": "data analysis",
+            "hr": "human resources",
+        }
+
+        for pattern, job_type in job_patterns.items():
+            if pattern in message_lower:
+                return job_type
+
+        return ""
 
     # The AI will handle all requests naturally in conversation
     # No need for separate intent detection or helper methods

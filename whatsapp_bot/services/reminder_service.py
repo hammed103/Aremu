@@ -52,7 +52,7 @@ class ReminderService:
                 keepalives=1,
                 keepalives_idle=30,
                 keepalives_interval=10,
-                keepalives_count=5
+                keepalives_count=5,
             )
             logger.info("✅ Reminder service database pool created")
         except Exception as e:
@@ -85,7 +85,9 @@ class ReminderService:
                     except:
                         pass
                 else:
-                    logger.error(f"❌ Failed to get database connection after {max_retries} attempts")
+                    logger.error(
+                        f"❌ Failed to get database connection after {max_retries} attempts"
+                    )
                     raise
 
     def return_connection(self, conn):
@@ -96,14 +98,20 @@ class ReminderService:
         except Exception as e:
             logger.error(f"❌ Error returning connection to pool: {e}")
 
-    def execute_with_retry(self, query, params=None, fetch_one=False, fetch_all=False, cursor_factory=None):
+    def execute_with_retry(
+        self, query, params=None, fetch_one=False, fetch_all=False, cursor_factory=None
+    ):
         """Execute query with automatic retry and connection management"""
         max_retries = 3
         for attempt in range(max_retries):
             conn = None
             try:
                 conn = self.get_connection()
-                cursor = conn.cursor(cursor_factory=cursor_factory) if cursor_factory else conn.cursor()
+                cursor = (
+                    conn.cursor(cursor_factory=cursor_factory)
+                    if cursor_factory
+                    else conn.cursor()
+                )
 
                 cursor.execute(query, params)
 
@@ -162,9 +170,7 @@ class ReminderService:
             """
 
             users = self.execute_with_retry(
-                query,
-                fetch_all=True,
-                cursor_factory=psycopg2.extras.RealDictCursor
+                query, fetch_all=True, cursor_factory=psycopg2.extras.RealDictCursor
             )
 
             logger.info(f"📊 Found {len(users)} users needing reminders")
@@ -180,9 +186,14 @@ class ReminderService:
             # Check if we already sent a reminder for this time slot
 
             # Determine which reminder slot this falls into
+            # Find the appropriate slot based on hours remaining
             reminder_slot = None
-            for slot in self.reminder_schedule:
-                if hours_remaining <= slot + 0.5 and hours_remaining >= slot - 0.5:
+
+            # Sort schedule from smallest to largest
+            sorted_schedule = sorted(self.reminder_schedule)
+
+            for slot in sorted_schedule:
+                if hours_remaining <= slot + 0.75:  # Within 45 minutes of slot
                     reminder_slot = slot
                     break
 
@@ -198,9 +209,7 @@ class ReminderService:
             """
 
             result = self.execute_with_retry(
-                query,
-                (user_id, f"{reminder_slot}h_reminder"),
-                fetch_one=True
+                query, (user_id, f"{reminder_slot}h_reminder"), fetch_one=True
             )
             count = result[0]
 
@@ -412,7 +421,7 @@ class ReminderService:
                     WHERE table_name = 'reminder_log'
                 );
                 """,
-                fetch_one=True
+                fetch_one=True,
             )
 
             table_exists = result[0]
@@ -420,8 +429,7 @@ class ReminderService:
             if table_exists:
                 # Check table structure
                 count_result = self.execute_with_retry(
-                    "SELECT COUNT(*) FROM reminder_log;",
-                    fetch_one=True
+                    "SELECT COUNT(*) FROM reminder_log;", fetch_one=True
                 )
                 count = count_result[0]
                 logger.info(f"✅ reminder_log table exists with {count} records")

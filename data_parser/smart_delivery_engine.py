@@ -10,12 +10,51 @@ import os
 from typing import List, Dict, Optional
 
 # Add WhatsApp bot path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "whatsapp_bot"))
+whatsapp_bot_path = os.path.join(os.path.dirname(__file__), "..", "whatsapp_bot")
+sys.path.insert(0, whatsapp_bot_path)  # Use insert(0, ...) for higher priority
 
 from legacy.database_manager import DatabaseManager
 from legacy.intelligent_job_matcher import IntelligentJobMatcher
 from legacy.job_tracking_system import JobTrackingSystem
 from legacy.window_management_system import WindowManagementSystem
+
+# Import apply button designer with robust error handling
+apply_button_designer = None
+
+try:
+    # Try local copy first
+    from apply_button_designer import apply_button_designer
+
+    print("✅ Smart Delivery Engine: Using local apply button designer")
+except ImportError:
+    try:
+        # Try WhatsApp bot utils import
+        from utils.apply_button_designer import apply_button_designer
+
+        print("✅ Smart Delivery Engine: Using WhatsApp bot apply button designer")
+    except ImportError as e:
+        try:
+            # Try with explicit importlib approach
+            import importlib.util
+
+            apply_button_path = os.path.join(
+                whatsapp_bot_path, "utils", "apply_button_designer.py"
+            )
+            spec = importlib.util.spec_from_file_location(
+                "apply_button_designer", apply_button_path
+            )
+            apply_button_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(apply_button_module)
+            apply_button_designer = apply_button_module.apply_button_designer
+            print("✅ Smart Delivery Engine: Using importlib apply button designer")
+        except Exception as e2:
+            # Final fallback if all imports fail
+            class FallbackApplyButtonDesigner:
+                def get_apply_button_text(self, job_url, company=None, job_title=None):
+                    return "🚀 Apply Now"
+
+            apply_button_designer = FallbackApplyButtonDesigner()
+            print(f"⚠️ Smart Delivery Engine: Using fallback ({e}, {e2})")
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +79,7 @@ class SmartDeliveryEngine:
             )
 
         # Delivery settings
-        self.min_match_score = 39  # Minimum match score for delivery
+        self.min_match_score = 50  # Minimum match score for delivery
         self.max_jobs_per_user_per_day = None  # No daily limits
         self.max_alerts_per_batch = 50  # Prevent spam during large scraping
 
@@ -211,10 +250,10 @@ class SmartDeliveryEngine:
 
             phone_number = user["phone_number"]
 
-            # Format alert message
+            # Format alert message with clean AI summary (no apply section)
             alert_msg = f"🚨 *NEW JOB ALERT!* ({match_score:.0f}% match)\n\n"
 
-            # Use AI summary if available
+            # Use AI summary if available (now clean without apply section)
             if job.get("ai_summary"):
                 alert_msg += job["ai_summary"]
             else:
@@ -224,20 +263,44 @@ class SmartDeliveryEngine:
                 if job.get("salary_min"):
                     currency = job.get("salary_currency", "NGN")
                     alert_msg += f"💰 {job['salary_min']:,} {currency}+\n"
-                alert_msg += f"\n🔗 **Apply:** {job.get('job_url', 'Contact employer')}"
 
-            # Send WhatsApp message
+            # Send WhatsApp message with apply button if job URL exists
             headers = {
                 "Authorization": f"Bearer {self.whatsapp_token}",
                 "Content-Type": "application/json",
             }
 
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": phone_number,
-                "type": "text",
-                "text": {"body": alert_msg},
-            }
+            job_url = job.get("job_url")
+            if job_url:
+                # Get smart apply button text based on context
+                button_text = apply_button_designer.get_apply_button_text(
+                    job_url, job.get("company"), job.get("title")
+                )
+                # Send with CTA URL button that opens website directly
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "to": phone_number,
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "cta_url",
+                        "body": {"text": alert_msg},
+                        "action": {
+                            "name": "cta_url",
+                            "parameters": {
+                                "display_text": button_text,
+                                "url": job_url,
+                            },
+                        },
+                    },
+                }
+            else:
+                # Send as regular text message if no job URL
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "to": phone_number,
+                    "type": "text",
+                    "text": {"body": alert_msg},
+                }
 
             response = requests.post(
                 self.whatsapp_api_url, headers=headers, json=payload

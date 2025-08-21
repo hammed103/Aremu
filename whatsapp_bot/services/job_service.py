@@ -42,7 +42,7 @@ class JobService:
 
             if not job_roles:
                 return [
-                    "I need to know what type of job you're looking for. Please type 'settings' to add your job title (e.g., 'Software Developer', 'Project Manager', etc.)."
+                    "I need to know what type of job you're looking for. Please type 'menu' and select 'Change Preferences' to add your job title (e.g., 'Software Developer', 'Project Manager', etc.)."
                 ]
 
             # Use the provided user ID or create a temporary one
@@ -62,8 +62,8 @@ class JobService:
                 job_id = job.get("id")
                 match_score = job.get("match_score", 0)
 
-                # Only include jobs with 35%+ match and not already shown
-                if job_id not in shown_job_ids and match_score >= 35.0:
+                # Only include jobs with 50%+ match and not already shown
+                if job_id not in shown_job_ids and match_score >= 50.0:
                     jobs.append(job)
                     if len(jobs) >= 3:  # Only need 3 jobs
                         break
@@ -83,16 +83,26 @@ class JobService:
             job_messages = []
 
             # First message: Introduction
-            intro_msg = f"Found 3+ jobs matching your preferences. Here's the top 3:"
+            intro_msg = f"Found job(s) matching your preferences.  here ⬇️:"
             job_messages.append(intro_msg)
 
-            # Individual job messages using ai_summary
+            # Individual job messages using ai_summary with apply buttons
             for i, job in enumerate(jobs, 1):
-                job_message = self._format_single_job_with_ai_summary(job, i)
-                job_messages.append(job_message)
+                # Create job message object with summary and URL for button handling
+                job_data = {
+                    "type": "job_with_button",
+                    "summary": self._format_single_job_with_ai_summary(job, i),
+                    "job_url": job.get("job_url"),
+                    "job_id": job.get("id"),
+                    "company": job.get("company"),
+                    "job_title": job.get("title"),
+                }
+                job_messages.append(job_data)
 
             # Add follow-up message to encourage more job requests
-            follow_up_message = "💬 Type 'jobs' again to see more recent opportunities!"
+            follow_up_message = (
+                "💬 Type 'menu' → 'Show Jobs' again to see more recent opportunities!"
+            )
             job_messages.append(follow_up_message)
 
             # Track that these jobs have been shown to the user
@@ -402,10 +412,9 @@ Would you like me to help you tailor your application?"""
             alert_msg += f"📍 {location}\n"
             alert_msg += f"{salary_display}\n"
 
-            # Add job URL if available
-            if job.get("job_url"):
-                alert_msg += f"\n🔗 **Apply:** {job['job_url']}"
-            else:
+            # Note: Apply button will be handled separately by WhatsApp service
+            # This is just the job summary content
+            if not job.get("job_url"):
                 alert_msg += (
                     f"\n💬 Reply '{index}' for full details and application info"
                 )
