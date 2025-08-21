@@ -95,7 +95,7 @@ class BotController:
             user_message_lower = user_message.lower().strip()
 
             # Update conversation window activity
-            self.window_manager.update_activity(user_id)
+            self.window_manager.update_window_activity(user_id)
 
             # Show menu for explicit menu commands only
             if user_message_lower in [
