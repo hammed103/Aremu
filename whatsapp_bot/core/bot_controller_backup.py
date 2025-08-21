@@ -264,7 +264,7 @@ class BotController:
                 },
                 {
                     "type": "reply",
-                    "reply": {"id": "reset_prefs", "title": "🔄 Start Fresh"},
+                    "reply": {"id": "main_menu", "title": "� Main Menu"},
                 },
             ]
 
@@ -1394,7 +1394,7 @@ class BotController:
                 },
                 {
                     "type": "reply",
-                    "reply": {"id": "reset_prefs", "title": "🔄 Start Fresh"},
+                    "reply": {"id": "main_menu", "title": "� Main Menu"},
                 },
             ]
 
