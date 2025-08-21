@@ -129,9 +129,9 @@ class GuidedSetupHandler:
 
     def _handle_location_step(self, user_message: str, user_id: int) -> str:
         """Handle location step in guided setup"""
-        # Save location and move to salary step - use same field name as update form
+        # Save location using standard field name that matches database schema
         locations = [loc.strip() for loc in user_message.split(",")]
-        preferences = {"location": locations}
+        preferences = {"preferred_locations": locations}
         self.pref_manager.save_preferences(user_id, preferences)
 
         self.set_guided_setup_state(user_id, "salary")
@@ -267,45 +267,15 @@ class GuidedSetupHandler:
             "You'll get instant notifications when perfect opportunities appear!"
         )
 
-        # Send message with reply buttons
-        try:
-            # Get user's phone number for sending buttons
-            cursor = self.db.connection.cursor()
-            cursor.execute("SELECT phone_number FROM users WHERE id = %s", (user_id,))
-            phone_result = cursor.fetchone()
-
-            if phone_result and phone_result[0]:
-                phone_number = phone_result[0]
-
-                # Import WhatsApp service here to avoid circular imports
-                from services.whatsapp_service import WhatsAppService
-                import os
-
-                whatsapp_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
-                whatsapp_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-                whatsapp_service = WhatsAppService(whatsapp_token, whatsapp_phone_id)
-
-                # Send message with reply buttons
-                success = whatsapp_service.send_interactive_buttons(
-                    phone_number,
-                    completion_message,
-                    [
-                        {"id": "show_jobs", "title": "🔍 Show Jobs"},
-                        {"id": "menu", "title": "📋 Main Menu"},
-                    ],
-                )
-
-                if success:
-                    return ""  # Don't send system message
-
-        except Exception as e:
-            logger.error(f"Error sending completion buttons: {e}")
-
-        # Fallback to text message if buttons fail
-        return (
-            completion_message
-            + "\n\nType 'menu' for main menu or 'show jobs' to see matches!"
-        )
+        # Return completion message - buttons will be sent by the caller
+        return {
+            "type": "completion_with_buttons",
+            "message": completion_message,
+            "buttons": [
+                {"id": "show_jobs", "title": "🔍 Show Jobs"},
+                {"id": "menu", "title": "📋 Main Menu"},
+            ],
+        }
 
     def clear_guided_setup_state(self, user_id: int) -> bool:
         """Clear guided setup state"""

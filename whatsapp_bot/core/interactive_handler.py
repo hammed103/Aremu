@@ -63,9 +63,13 @@ class InteractiveHandler:
                 return self.start_preference_setup(phone_number, user_id)
 
             elif selection_id == "view_jobs":
+                logger.info(f"🔍 DEBUG - View jobs requested for user {user_id}")
                 user_prefs = self.pref_manager.get_preferences(user_id)
-                if not user_prefs or not user_prefs.get("preferences_confirmed"):
-                    return "Please set your preferences first. Type 'menu' and select 'Change Preferences'."
+                logger.info(
+                    f"🔍 DEBUG - User prefs from interactive handler: {user_prefs}"
+                )
+                # Let the job search handler do its own meaningful preferences check
+                logger.info(f"🔍 DEBUG - Calling job search handler")
                 return self.job_search_handler.handle_job_search(
                     user_prefs, user_id, phone_number
                 )
@@ -172,12 +176,10 @@ class InteractiveHandler:
             # Handle guided setup completion buttons
             elif button_id == "show_jobs":
                 user_prefs = self.pref_manager.get_preferences(user_id)
-                if user_prefs and user_prefs.get("preferences_confirmed"):
-                    return self.job_search_handler.handle_job_search(
-                        user_prefs, user_id, phone_number
-                    )
-                else:
-                    return "Please complete your preferences setup first."
+                # Let the job search handler do its own meaningful preferences check
+                return self.job_search_handler.handle_job_search(
+                    user_prefs, user_id, phone_number
+                )
 
             elif button_id == "menu":
                 return self.show_main_menu(phone_number)
@@ -185,12 +187,10 @@ class InteractiveHandler:
             # Handle follow-up job search buttons
             elif button_id == "more_jobs":
                 user_prefs = self.pref_manager.get_preferences(user_id)
-                if user_prefs and user_prefs.get("preferences_confirmed"):
-                    return self.job_search_handler.handle_job_search(
-                        user_prefs, user_id, phone_number
-                    )
-                else:
-                    return "Please complete your preferences setup first."
+                # Let the job search handler do its own meaningful preferences check
+                return self.job_search_handler.handle_job_search(
+                    user_prefs, user_id, phone_number
+                )
 
             elif button_id == "main_menu":
                 return self.show_main_menu(phone_number)

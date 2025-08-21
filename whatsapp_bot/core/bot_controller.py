@@ -137,9 +137,35 @@ class BotController:
 
             # Check if user is in guided setup mode
             if self.guided_setup_handler.is_in_guided_setup(user_id):
-                return self.guided_setup_handler.handle_guided_setup_step(
+                response = self.guided_setup_handler.handle_guided_setup_step(
                     user_message, user_id
                 )
+
+                # Handle completion with buttons
+                if (
+                    isinstance(response, dict)
+                    and response.get("type") == "completion_with_buttons"
+                ):
+                    # Send completion message with buttons
+                    # Convert button format for send_button_menu
+                    formatted_buttons = [
+                        {
+                            "type": "reply",
+                            "reply": {"id": btn["id"], "title": btn["title"]},
+                        }
+                        for btn in response["buttons"]
+                    ]
+                    success = self.whatsapp_service.send_button_menu(
+                        phone_number, response["message"], formatted_buttons
+                    )
+                    return (
+                        ""
+                        if success
+                        else response["message"]
+                        + "\n\nType 'menu' for main menu or 'show jobs' to see matches!"
+                    )
+
+                return response
 
             # Check if user is updating a specific preference field
             if self.field_update_handler.is_updating_preference_field(user_id):

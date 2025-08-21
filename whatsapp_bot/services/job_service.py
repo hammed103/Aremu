@@ -52,9 +52,15 @@ class JobService:
 
             # Get list of jobs already shown to this user
             shown_job_ids = self._get_shown_job_ids(user_id)
+            logger.info(
+                f"🔍 DEBUG - User {user_id} has seen {len(shown_job_ids)} jobs: {shown_job_ids}"
+            )
 
             # Use intelligent matcher for AI-powered job matching
             all_jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=10)
+            logger.info(
+                f"🔍 DEBUG - Found {len(all_jobs)} total jobs for user {user_id}"
+            )
 
             # Filter out jobs already shown to user and apply minimum match score
             jobs = []
@@ -65,8 +71,24 @@ class JobService:
                 # Only include jobs with 50%+ match and not already shown
                 if job_id not in shown_job_ids and match_score >= 50.0:
                     jobs.append(job)
-                    if len(jobs) >= 3:  # Only need 3 jobs
-                        break
+                elif job_id in shown_job_ids:
+                    logger.info(f"🔍 DEBUG - Job {job_id} already shown to user")
+                elif match_score < 50.0:
+                    logger.info(
+                        f"🔍 DEBUG - Job {job_id} has low match score: {match_score}%"
+                    )
+
+            logger.info(
+                f"🔍 DEBUG - After filtering: {len(jobs)} jobs for user {user_id}"
+            )
+
+            # Sort jobs by match score (highest first)
+            jobs.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+            logger.info(
+                f"🔍 DEBUG - Jobs sorted by match score, top job: {jobs[0].get('match_score', 0):.1f}%"
+                if jobs
+                else "🔍 DEBUG - No jobs to sort"
+            )
 
             if not jobs:
                 # Check if user has been shown jobs before
@@ -87,7 +109,11 @@ class JobService:
             job_messages.append(intro_msg)
 
             # Individual job messages using ai_summary with apply buttons
-            for i, job in enumerate(jobs, 1):
+            # Limit to 5 jobs at a time for better user experience
+            jobs_to_show = jobs[:5]
+            remaining_jobs = len(jobs) - len(jobs_to_show)
+
+            for i, job in enumerate(jobs_to_show, 1):
                 # Create job message object with summary and URL for button handling
                 job_data = {
                     "type": "job_with_button",
@@ -100,11 +126,18 @@ class JobService:
                 job_messages.append(job_data)
 
             # Add follow-up message with interactive buttons
+            if remaining_jobs > 0:
+                follow_up_message = f"💬 Want to see more opportunities? ({remaining_jobs} more available)"
+                more_button_title = f"🔍 More Jobs ({remaining_jobs})"
+            else:
+                follow_up_message = "💬 Want to see more opportunities?"
+                more_button_title = "🔍 More Jobs"
+
             follow_up_data = {
                 "type": "follow_up_buttons",
-                "message": "💬 Want to see more opportunities?",
+                "message": follow_up_message,
                 "buttons": [
-                    {"id": "more_jobs", "title": "🔍 More Jobs"},
+                    {"id": "more_jobs", "title": more_button_title},
                     {"id": "menu", "title": "📋 Main Menu"},
                 ],
             }
@@ -389,6 +422,13 @@ Would you like me to help you tailor your application?"""
             ai_summary = job.get("whatsapp_summary") or job.get("ai_summary")
             if ai_summary:
                 alert_msg = f"🚨 *JOB MATCH #{index}* ({match_score:.0f}% match)\n\n"
+
+                # Truncate AI summary to fit WhatsApp's 1024 character limit
+                # Reserve space for alert_msg prefix (~50 chars) and buffer
+                max_summary_length = 850  # More conservative limit
+                if len(ai_summary) > max_summary_length:
+                    ai_summary = ai_summary[:max_summary_length] + "..."
+
                 alert_msg += ai_summary
                 return alert_msg
 

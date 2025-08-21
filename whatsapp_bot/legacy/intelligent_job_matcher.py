@@ -196,8 +196,9 @@ class IntelligentJobMatcher:
                    OR posted_date IS NULL
                 ORDER BY
                     CASE WHEN ai_summary IS NOT NULL THEN 0 ELSE 1 END,
-                    posted_date DESC NULLS LAST
-                LIMIT 100
+                    scraped_at DESC NULLS FIRST,  -- Sort by scraped_at (more reliable than posted_date)
+                    id DESC  -- Add deterministic secondary sort
+                LIMIT 900  -- Balanced limit for performance vs coverage
             """
             )
             all_jobs = cursor.fetchall()
@@ -235,9 +236,10 @@ class IntelligentJobMatcher:
     def _calculate_job_score(self, user_prefs: Dict, job: Dict) -> float:
         """Calculate AI-enhanced job match score using multiple strategies"""
 
-        # STRICT LOCATION FILTER: For non-remote jobs, location must match
-        if not self._is_location_compatible(user_prefs, job):
-            return 0.0  # Disqualify jobs with incompatible locations
+        # LOCATION FILTERING DISABLED - Allow all jobs regardless of location
+        # We'll handle location preferences in the UI/scoring instead of hard filtering
+        # if not self._is_location_compatible(user_prefs, job):
+        #     return 0.0  # Disqualify jobs with incompatible locations
 
         total_score = 0.0
 
@@ -261,13 +263,13 @@ class IntelligentJobMatcher:
         skills_score = self._score_skills_match(user_prefs, job)
         total_score += skills_score * 0.75  # Reduce from 20 to 15 points
 
-        # 6. WORK ARRANGEMENT MATCHING (10 points) - Keep existing
-        work_score = self._score_work_arrangement(user_prefs, job)
-        total_score += work_score * 0.67  # Reduce from 15 to 10 points
+        # 6. WORK ARRANGEMENT MATCHING (10 points) - DISABLED (uses location)
+        # work_score = self._score_work_arrangement(user_prefs, job)
+        # total_score += work_score * 0.67  # Reduce from 15 to 10 points
 
-        # 7. LOCATION MATCHING (10 points) - Keep existing
-        location_score = self._score_location_match(user_prefs, job)
-        total_score += location_score
+        # 7. LOCATION MATCHING (10 points) - DISABLED FOR NOW
+        # location_score = self._score_location_match(user_prefs, job)
+        # total_score += location_score
 
         # 8. SALARY MATCHING (5 points) - Reduced weight
         salary_score = self._score_salary_match(user_prefs, job)
@@ -278,36 +280,6 @@ class IntelligentJobMatcher:
         total_score += exp_score
 
         return min(total_score, 100.0)  # Cap at 100%
-
-    def _is_location_compatible(self, user_prefs: Dict, job: Dict) -> bool:
-        """Check if job location is compatible with user preferences"""
-        user_locations = user_prefs.get("preferred_locations", []) or []
-        willing_to_relocate = user_prefs.get("willing_to_relocate", False)
-
-        # If user has no location preferences, accept any job
-        if not user_locations:
-            return True
-
-        # Check if job is remote/hybrid (location doesn't matter)
-        ai_remote = job.get("ai_remote_allowed", False)
-        is_remote = job.get("remote", False)
-        location = (job.get("location", "") or "").lower()
-
-        if ai_remote or is_remote or "remote" in location or "hybrid" in location:
-            return True  # Remote jobs are always compatible
-
-        # For non-remote jobs, check location match
-        job_location = location
-        for user_location in user_locations:
-            user_loc_lower = user_location.lower()
-            if user_loc_lower in job_location:
-                return True  # Location matches
-
-        # If willing to relocate, accept any location
-        if willing_to_relocate:
-            return True
-
-        return False  # Location incompatible
 
     def _score_ai_job_titles_match(self, user_prefs: dict, job: dict) -> float:
         """Enhanced job title matching using AI job titles array"""
@@ -369,12 +341,22 @@ class IntelligentJobMatcher:
 
         ai_function_lower = ai_job_function.lower()
 
-        # Check user categories
+        # Check user categories first (highest priority)
         for category in user_categories:
             if category and category.lower() in ai_function_lower:
                 return 25.0
 
-        # Check user roles for function keywords
+        # Enhanced direct matching for data roles (second priority - 25 points)
+        if any(
+            "data" in role.lower() or "analyst" in role.lower() for role in user_roles
+        ):
+            if any(
+                keyword in ai_function_lower
+                for keyword in ["data", "analytics", "analyst", "intelligence"]
+            ):
+                return 25.0  # Full points for direct data match
+
+        # Check user roles for function keywords (third priority - 20 points)
         function_keywords = {
             "sales": ["sales", "business development", "account management"],
             "engineering": ["engineer", "developer", "technical", "software"],
@@ -738,12 +720,12 @@ class IntelligentJobMatcher:
             if job.get("ai_remote_allowed") or "remote" in job_title:
                 reasons.append("Remote work available")
 
-        # Location matches
-        user_locations = user_prefs.get("preferred_locations", []) or []
-        job_location = (job.get("location", "") or "").lower()
-        for location in user_locations:
-            if location.lower() in job_location:
-                reasons.append(f"Located in {location}")
+        # Location matches - DISABLED
+        # user_locations = user_prefs.get("preferred_locations", []) or []
+        # job_location = (job.get("location", "") or "").lower()
+        # for location in user_locations:
+        #     if location.lower() in job_location:
+        #         reasons.append(f"Located in {location}")
 
         return reasons[:3]  # Limit to top 3 reasons
 

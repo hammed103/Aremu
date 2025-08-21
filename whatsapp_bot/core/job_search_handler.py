@@ -38,7 +38,13 @@ class JobSearchHandler:
         """Handle job search requests"""
         # Refresh user preferences to get latest status
         fresh_prefs = self.pref_manager.get_preferences(user_id)
-        if not self._has_meaningful_preferences(fresh_prefs):
+
+        # Debug: Log what preferences we actually have
+        logger.info(f"🔍 DEBUG - User {user_id} preferences: {fresh_prefs}")
+        has_meaningful = self._has_meaningful_preferences(fresh_prefs)
+        logger.info(f"🔍 DEBUG - Has meaningful preferences: {has_meaningful}")
+
+        if not has_meaningful:
             return "Please set your preferences first. Type 'menu' and select 'Change Preferences'."
 
         # Get user's name for personalized response
@@ -87,8 +93,16 @@ class JobSearchHandler:
                             and message.get("type") == "follow_up_buttons"
                         ):
                             # Send follow-up message with interactive buttons
-                            self.whatsapp_service.send_interactive_buttons(
-                                phone_number, message["message"], message["buttons"]
+                            # Convert button format for send_button_menu
+                            formatted_buttons = [
+                                {
+                                    "type": "reply",
+                                    "reply": {"id": btn["id"], "title": btn["title"]},
+                                }
+                                for btn in message["buttons"]
+                            ]
+                            self.whatsapp_service.send_button_menu(
+                                phone_number, message["message"], formatted_buttons
                             )
                         else:
                             # Send regular text message
@@ -300,9 +314,11 @@ class JobSearchHandler:
             return False
 
         # Check for key preference fields that indicate user has set up their profile
+        # Include backward compatibility for existing users with old field names
         meaningful_fields = [
             "job_roles",
-            "preferred_locations",
+            "preferred_locations",  # Standard field name
+            "location",  # Backward compatibility for existing users
             "work_arrangements",
             "years_of_experience",
             "salary_min",

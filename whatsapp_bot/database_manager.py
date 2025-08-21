@@ -37,7 +37,7 @@ class DatabaseManager:
                 keepalives=1,
                 keepalives_idle=30,
                 keepalives_interval=10,
-                keepalives_count=5
+                keepalives_count=5,
             )
             logger.info("✅ Database connection pool created successfully")
         except Exception as e:
@@ -71,7 +71,9 @@ class DatabaseManager:
                     except:
                         pass
                 else:
-                    logger.error(f"❌ Failed to get database connection after {max_retries} attempts")
+                    logger.error(
+                        f"❌ Failed to get database connection after {max_retries} attempts"
+                    )
                     raise
 
     def return_connection(self, conn):
@@ -82,14 +84,20 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"❌ Error returning connection to pool: {e}")
 
-    def execute_with_retry(self, query, params=None, fetch_one=False, fetch_all=False, cursor_factory=None):
+    def execute_with_retry(
+        self, query, params=None, fetch_one=False, fetch_all=False, cursor_factory=None
+    ):
         """Execute query with automatic retry and connection management"""
         max_retries = 3
         for attempt in range(max_retries):
             conn = None
             try:
                 conn = self.get_connection()
-                cursor = conn.cursor(cursor_factory=cursor_factory) if cursor_factory else conn.cursor()
+                cursor = (
+                    conn.cursor(cursor_factory=cursor_factory)
+                    if cursor_factory
+                    else conn.cursor()
+                )
 
                 cursor.execute(query, params)
 
@@ -116,7 +124,9 @@ class DatabaseManager:
                 if attempt < max_retries - 1:
                     time.sleep(1)
                 else:
-                    logger.error(f"❌ Query failed after {max_retries} attempts: {query}")
+                    logger.error(
+                        f"❌ Query failed after {max_retries} attempts: {query}"
+                    )
                     raise
 
     def ensure_tables_exist(self):
@@ -156,7 +166,7 @@ class DatabaseManager:
             result = self.execute_with_retry(
                 "SELECT id, name FROM users WHERE phone_number = %s",
                 (phone_number,),
-                fetch_one=True
+                fetch_one=True,
             )
 
             if result:
@@ -168,7 +178,7 @@ class DatabaseManager:
                            message_count = message_count + 1,
                            name = COALESCE(%s, name)
                        WHERE id = %s""",
-                    (name, user_id)
+                    (name, user_id),
                 )
                 logger.info(f"📱 Updated existing user {phone_number}")
                 return user_id
@@ -178,7 +188,7 @@ class DatabaseManager:
                     """INSERT INTO users (phone_number, name)
                        VALUES (%s, %s) RETURNING id""",
                     (phone_number, name),
-                    fetch_one=True
+                    fetch_one=True,
                 )
                 user_id = result[0]
                 logger.info(f"👤 Created new user {phone_number}")
@@ -193,7 +203,7 @@ class DatabaseManager:
         try:
             self.execute_with_retry(
                 "UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = %s",
-                (user_id,)
+                (user_id,),
             )
             return True
         except Exception as e:
@@ -212,7 +222,7 @@ class DatabaseManager:
             message_order = self.execute_with_retry(
                 "SELECT COALESCE(MAX(message_order), 0) + 1 FROM conversations WHERE session_id = %s",
                 (session_id,),
-                fetch_one=True
+                fetch_one=True,
             )[0]
 
             # Insert message
@@ -220,7 +230,7 @@ class DatabaseManager:
                 """INSERT INTO conversations
                    (user_id, message_type, message_content, session_id, message_order)
                    VALUES (%s, %s, %s, %s, %s)""",
-                (user_id, message_type, content, session_id, message_order)
+                (user_id, message_type, content, session_id, message_order),
             )
 
             # Update session
@@ -231,7 +241,7 @@ class DatabaseManager:
                    DO UPDATE SET
                        last_message_at = CURRENT_TIMESTAMP,
                        message_count = user_sessions.message_count + 1""",
-                (user_id, session_id)
+                (user_id, session_id),
             )
 
             return True
@@ -251,7 +261,7 @@ class DatabaseManager:
                    LIMIT %s""",
                 (user_id, limit),
                 fetch_all=True,
-                cursor_factory=psycopg2.extras.RealDictCursor
+                cursor_factory=psycopg2.extras.RealDictCursor,
             )
 
             # Reverse to get chronological order
@@ -947,8 +957,13 @@ class DatabaseManager:
             logger.error(f"❌ Error formatting job: {e}")
             return f"{index}️⃣ Job formatting error"
 
+    @property
+    def connection(self):
+        """Get a connection from the pool for legacy compatibility"""
+        return self.get_connection()
+
     def close(self):
         """Close database connection"""
-        if self.connection:
-            self.connection.close()
-            logger.info("🔌 Database connection closed")
+        if self.connection_pool:
+            self.connection_pool.closeall()
+            logger.info("🔌 Database connection pool closed")

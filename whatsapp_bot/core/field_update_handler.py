@@ -183,7 +183,7 @@ class FieldUpdateHandler:
             if not locations:
                 return "Please enter at least one location."
 
-            preferences = {"location": locations}
+            preferences = {"preferred_locations": locations}
             success = self.pref_manager.save_preferences(user_id, preferences)
 
             if success:

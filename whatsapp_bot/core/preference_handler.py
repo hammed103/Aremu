@@ -50,7 +50,10 @@ class PreferenceHandler:
                     else "Not set"
                 )
 
-                locations = current_prefs.get("preferred_locations", [])
+                # Check both field names for backward compatibility
+                locations = current_prefs.get(
+                    "preferred_locations", []
+                ) or current_prefs.get("location", [])
                 locations_str = (
                     ", ".join(locations)
                     if locations and isinstance(locations, list)
