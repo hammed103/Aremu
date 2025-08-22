@@ -28,6 +28,35 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fronten
 app.static_folder = FRONTEND_DIR
 
 
+def run_reminder_daemon():
+    """Run reminder daemon in background thread"""
+    # Import here to avoid circular imports
+    import time
+
+    logger.info("🕐 Starting reminder daemon in background")
+    cycle_count = 0
+
+    while True:
+        try:
+            cycle_count += 1
+            logger.info(f"🔄 Reminder daemon cycle #{cycle_count} starting")
+
+            sent_count = reminder_service.run_reminder_cycle()
+
+            if sent_count > 0:
+                logger.info(f"✅ Cycle #{cycle_count}: {sent_count} reminders sent")
+            else:
+                logger.info(f"✅ Cycle #{cycle_count}: No reminders needed")
+
+            logger.info("😴 Sleeping for 300 seconds until next cycle...")
+            time.sleep(300)  # Check every 5 minutes
+
+        except Exception as e:
+            logger.error(f"❌ Reminder daemon cycle #{cycle_count} error: {e}")
+            logger.info("⏳ Waiting 60 seconds before retry...")
+            time.sleep(60)  # Wait 1 minute on error
+
+
 # Initialize global components
 openai_api_key = os.getenv("OPENAI_API_KEY")
 whatsapp_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
@@ -51,6 +80,18 @@ try:
 
     logger.info("🤖 Aremu WhatsApp Bot initialized with clean architecture")
     BOT_INITIALIZED = True
+    logger.info("Bot initialized set to True")
+
+    # Start reminder daemon in background thread (for production)
+    is_production = os.environ.get("FLASK_ENV") == "production"
+    if is_production and BOT_INITIALIZED:
+        reminder_thread = threading.Thread(target=run_reminder_daemon, daemon=True)
+        reminder_thread.start()
+        logger.info("🕐 Reminder daemon started in background thread")
+    else:
+        logger.info(
+            f"🕐 Reminder daemon not started (production: {is_production}, bot_init: {BOT_INITIALIZED})"
+        )
 except Exception as e:
     logger.error(f"❌ Failed to initialize bot components: {e}")
     logger.info("🌐 Starting in frontend-only mode")
@@ -59,22 +100,6 @@ except Exception as e:
     webhook_handler = None
     reminder_service = None
     BOT_INITIALIZED = False
-
-
-def run_reminder_daemon():
-    """Run reminder daemon in background thread"""
-    if reminder_service and BOT_INITIALIZED:
-        import time
-
-        logger.info("🕐 Starting reminder daemon in background")
-
-        while True:
-            try:
-                reminder_service.run_reminder_cycle()
-                time.sleep(300)  # Check every 5 minutes
-            except Exception as e:
-                logger.error(f"❌ Reminder daemon error: {e}")
-                time.sleep(60)  # Wait 1 minute on error
 
 
 # Helper functions
@@ -203,11 +228,6 @@ if __name__ == "__main__":
     logger.info(f"🚀 Starting Aremu unified server on port {port}")
     logger.info(f"📱 Frontend available at: http://localhost:{port}/")
     logger.info(f"🤖 WhatsApp webhook at: http://localhost:{port}/webhook")
-
-    # Start reminder daemon in background thread (only in production)
-    if not debug_mode and BOT_INITIALIZED:
-        reminder_thread = threading.Thread(target=run_reminder_daemon, daemon=True)
-        reminder_thread.start()
-        logger.info("🕐 Reminder daemon started in background")
+    logger.info("🕐 Reminder daemon will start automatically in production mode")
 
     app.run(host="0.0.0.0", port=port, debug=debug_mode)

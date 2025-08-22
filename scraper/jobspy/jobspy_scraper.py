@@ -34,7 +34,7 @@ class FixedDatabaseJobScraper:
         # Scraping configuration
         self.config = {
             "results_wanted": 100,
-            "hours_old": 168,
+            "hours_old": 24,
             "delay_between_searches": 3,
             "linkedin_fetch_description": True,
             "use_proxy": False,
