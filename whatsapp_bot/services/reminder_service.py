@@ -25,18 +25,13 @@ class ReminderService:
         self.connect_db()
 
         # Reminder schedule (hours remaining when to send reminder)
-        # For testing: start reminders much earlier
         self.reminder_schedule = [
-            22,
-            20,
-            18,
-            16,
-            8,
-            5,
-            3,
-            1,
-            0.25,
-        ]  # More frequent for testing
+            8,  # 8 hours remaining - main market update
+            5,  # 5 hours remaining - buddy check-in
+            3,  # 3 hours remaining - don't miss out
+            1,  # 1 hour remaining - final hour alert
+            0.25,  # 15 minutes remaining - last call
+        ]
 
     def connect_db(self):
         """Create database connection pool"""
@@ -157,15 +152,18 @@ class ReminderService:
             FROM users u
             LEFT JOIN (
                 SELECT
-                    u2.phone_number as user_phone,
-                    0 as jobs_sent_today
+                    u2.id as user_id,
+                    COUNT(ujh.id) as jobs_sent_today
                 FROM users u2
-                WHERE 1=0  -- Always return 0 for now, will implement job tracking later
-            ) js ON u.phone_number = js.user_phone
+                LEFT JOIN user_job_history ujh ON u2.id = ujh.user_id
+                    AND DATE(ujh.shown_at) = CURRENT_DATE
+                    AND ujh.message_sent = TRUE
+                GROUP BY u2.id
+            ) js ON u.id = js.user_id
             WHERE
                 u.is_active = true
                 AND u.last_active > NOW() - INTERVAL '24 hours'
-                AND EXTRACT(EPOCH FROM (NOW() - u.last_active)) / 3600 >= 2  -- Start reminders at 2 hours (for testing)
+                AND EXTRACT(EPOCH FROM (NOW() - u.last_active)) / 3600 >= 8  -- Start reminders at 8 hours
             ORDER BY u.last_active ASC
             """
 
@@ -180,22 +178,26 @@ class ReminderService:
             logger.error(f"❌ Error getting users for reminders: {e}")
             return []
 
+    def get_reminder_slot(self, hours_remaining: float) -> float:
+        """Get the appropriate reminder slot for the given hours remaining"""
+        for slot in self.reminder_schedule:
+            if slot == 0.25 and hours_remaining <= 0.5:  # 15 minutes
+                return slot
+            elif slot == 1 and 0.5 < hours_remaining <= 1.5:  # 1 hour
+                return slot
+            elif slot == 3 and 1.5 < hours_remaining <= 4:  # 3 hours
+                return slot
+            elif slot == 5 and 4 < hours_remaining <= 6:  # 5 hours
+                return slot
+            elif slot == 8 and 6 < hours_remaining <= 10:  # 8 hours
+                return slot
+        return None
+
     def should_send_reminder(self, hours_remaining: float, user_id: int) -> bool:
         """Check if we should send a reminder at this time"""
         try:
-            # Check if we already sent a reminder for this time slot
-
-            # Determine which reminder slot this falls into
-            # Find the appropriate slot based on hours remaining
-            reminder_slot = None
-
-            # Sort schedule from smallest to largest
-            sorted_schedule = sorted(self.reminder_schedule)
-
-            for slot in sorted_schedule:
-                if hours_remaining <= slot + 0.75:  # Within 45 minutes of slot
-                    reminder_slot = slot
-                    break
+            # Get the appropriate reminder slot
+            reminder_slot = self.get_reminder_slot(hours_remaining)
 
             if not reminder_slot:
                 return False
@@ -220,71 +222,37 @@ class ReminderService:
             return False
 
     def get_progressive_reminder_message(
-        self, hours_remaining: float, jobs_sent_count: int = 0
+        self, hours_remaining: float, jobs_sent_count: int = 0, hours_elapsed: float = 0
     ) -> str:
         """Get escalating reminder messages based on time remaining"""
 
-        if hours_remaining >= 21.5 and hours_remaining <= 22.5:  # 22h reminder
-            return (
-                f"🧪 *TEST REMINDER - 22 Hours Remaining*\n\n"
-                f"This is a test of the reminder system!\n"
-                f"I've been monitoring for 2 hours.\n"
-                f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
-                f"In production, this would be sent at 8 hours remaining.\n"
-                f"Send any message to reset the 24-hour cycle! ⚡"
-            )
+        # Calculate monitoring hours (24 - hours_remaining)
+        monitoring_hours = int(24 - hours_remaining)
 
-        elif hours_remaining >= 19.5 and hours_remaining <= 20.5:  # 20h reminder
-            return (
-                f"🧪 *TEST REMINDER - 20 Hours Remaining*\n\n"
-                f"I've been monitoring for 4 hours.\n"
-                f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
-                f"Testing the reminder system at 20h remaining.\n"
-                f"Send any message to reset the 24-hour cycle! ⚡"
-            )
-
-        elif hours_remaining >= 17.5 and hours_remaining <= 18.5:  # 18h reminder
-            return (
-                f"🧪 *TEST REMINDER - 18 Hours Remaining*\n\n"
-                f"I've been monitoring for 6 hours.\n"
-                f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
-                f"Testing the reminder system at 18h remaining.\n"
-                f"Send any message to reset the 24-hour cycle! ⚡"
-            )
-
-        elif hours_remaining >= 15.5 and hours_remaining <= 16.5:  # 16h reminder
-            return (
-                f"🧪 *TEST REMINDER - 16 Hours Remaining*\n\n"
-                f"I've been monitoring for 8 hours.\n"
-                f"Jobs sent so far: {jobs_sent_count} 📊\n\n"
-                f"Testing the reminder system at 16h remaining.\n"
-                f"Send any message to reset the 24-hour cycle! ⚡"
-            )
-
-        elif hours_remaining >= 7.5 and hours_remaining <= 8.5:  # 8 hour reminder
+        if hours_remaining >= 7.5 and hours_remaining <= 8.5:  # 8 hour reminder
             if jobs_sent_count > 0:
                 return (
                     f"📊 *Market Update for you!*\n\n"
-                    f"I've been actively monitoring job boards for 16 hours.\n"
+                    f"I've been actively monitoring job boards for {monitoring_hours} hours.\n"
                     f"Sent you {jobs_sent_count} quality matches so far! 🎯\n\n"
-                    f"I've got 8 more hours of **real-time alerts** left.\n"
+                    f"I've got 8 more hours of *real-time alerts* left.\n"
                     f"Drop me a message anytime to reset my 24-hour cycle! ⚡"
                 )
             else:
                 return (
                     f"📊 *Market Update for you!*\n\n"
-                    f"I've been actively monitoring for 16 hours.\n"
+                    f"I've been actively monitoring for {monitoring_hours} hours.\n"
                     f"No perfect matches yet, but I'm still hunting! 🔍\n\n"
-                    f"I've got 8 more hours of **real-time alerts** left.\n"
+                    f"I've got 8 more hours of *real-time alerts* left.\n"
                     f"Send me a message anytime to reset my 24-hour cycle! ⚡"
                 )
 
         elif hours_remaining >= 4.5 and hours_remaining <= 5.5:  # 5 hour reminder
             return (
                 f"🤖 *Your job-hunting buddy checking in!*\n\n"
-                f"I've been working for 19 hours straight!\n"
+                f"I've been working for {monitoring_hours} hours straight!\n"
                 f"Delivered {jobs_sent_count} matches to your WhatsApp 📱\n\n"
-                f"I've got 5 hours left of **instant notifications**\n"
+                f"I've got 5 hours left of *instant notifications*\n"
                 f"(You can still see jobs when I sleep, but no real-time alerts! 😴)"
             )
 
@@ -339,20 +307,28 @@ class ReminderService:
         """Send reminder to a specific user"""
         try:
             hours_remaining = user["hours_remaining"]
+            hours_elapsed = user.get("hours_elapsed", 0)
 
             if not self.should_send_reminder(hours_remaining, user["id"]):
                 return False
 
             message = self.get_progressive_reminder_message(
-                hours_remaining, user["jobs_sent_count"]
+                hours_remaining, user["jobs_sent_count"], hours_elapsed
             )
 
             # Send the reminder
             success = self.whatsapp_service.send_message(user["phone_number"], message)
 
             if success:
+                # Get the correct reminder slot for logging
+                reminder_slot = self.get_reminder_slot(hours_remaining)
+
                 # Log the reminder
-                reminder_type = f"{int(hours_remaining)}h_reminder"
+                reminder_type = (
+                    f"{reminder_slot}h_reminder"
+                    if reminder_slot
+                    else f"{int(hours_remaining)}h_reminder"
+                )
                 self.log_reminder_sent(user["id"], reminder_type, hours_remaining)
 
                 logger.info(f"✅ Sent {reminder_type} to {user['phone_number']}")
