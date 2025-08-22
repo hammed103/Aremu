@@ -232,12 +232,50 @@ class InteractiveHandler:
             elif button_id == "help":
                 return self.show_help_info()
 
+            # Handle Stay Active button from reminders
+            elif button_id == "stay_active_24h":
+                return self.handle_stay_active_button(phone_number, user_id)
+
             else:
                 return "Invalid selection. Type 'menu' to see options again."
 
         except Exception as e:
             logger.error(f"Error handling button selection {button_id}: {e}")
             return "Something went wrong. Type 'menu' to try again."
+
+    def handle_stay_active_button(self, phone_number: str, user_id: int) -> str:
+        """Handle Stay Active button click from reminder messages"""
+        try:
+            # Update user's last_active timestamp to reset the 24-hour window
+            self.db.update_user_activity(user_id)
+
+            # Get user's name for personalized response
+            cursor = self.db.connection.cursor()
+            cursor.execute("SELECT name FROM users WHERE id = %s", (user_id,))
+            user_result = cursor.fetchone()
+            user_name = (
+                user_result[0].split()[0] if user_result and user_result[0] else "there"
+            )
+
+            # Send confirmation message
+            response = (
+                f"⚡ *Perfect, {user_name}!*\n\n"
+                f"Your 24-hour window has been reset! 🔄\n\n"
+                f"I'm back to full power:\n"
+                f"✅ Real-time job alerts active\n"
+                f"✅ Instant notifications enabled\n"
+                f"✅ 24 hours of fresh monitoring ahead\n\n"
+                f"Keep hunting! 🎯"
+            )
+
+            logger.info(
+                f"✅ Stay Active button clicked by {phone_number} - 24h window reset"
+            )
+            return response
+
+        except Exception as e:
+            logger.error(f"❌ Error handling stay active button: {e}")
+            return "✅ Window reset! I'm back to monitoring for you 24/7!"
 
     def start_preference_setup(self, phone_number: str, user_id: int) -> str:
         """Always show current preferences first, then options"""

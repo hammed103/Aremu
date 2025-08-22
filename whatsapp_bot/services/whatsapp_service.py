@@ -146,6 +146,34 @@ class WhatsAppService:
             logger.error(f"Error sending button menu: {e}")
             return False
 
+    def send_reminder_with_stay_active_button(
+        self, phone_number: str, message: str
+    ) -> bool:
+        """Send reminder message with Stay Active button"""
+        try:
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {"id": "stay_active_24h", "title": "⚡ Stay Active"},
+                }
+            ]
+
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": message},
+                    "action": {"buttons": buttons},
+                },
+            }
+            return self._send_message(payload)
+        except Exception as e:
+            logger.error(f"Error sending reminder with button: {e}")
+            # Fallback to regular message
+            return self.send_message(phone_number, message)
+
     def send_job_with_apply_button(
         self,
         phone_number: str,

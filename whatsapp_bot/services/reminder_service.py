@@ -236,7 +236,7 @@ class ReminderService:
                     f"I've been actively monitoring job boards for {monitoring_hours} hours.\n"
                     f"Sent you {jobs_sent_count} quality matches so far! 🎯\n\n"
                     f"I've got 8 more hours of *real-time alerts* left.\n"
-                    f"Drop me a message anytime to reset my 24-hour cycle! ⚡"
+                    f"Click 'Stay Active' below to keep me hunting! ⚡"
                 )
             else:
                 return (
@@ -244,7 +244,7 @@ class ReminderService:
                     f"I've been actively monitoring for {monitoring_hours} hours.\n"
                     f"No perfect matches yet, but I'm still hunting! 🔍\n\n"
                     f"I've got 8 more hours of *real-time alerts* left.\n"
-                    f"Send me a message anytime to reset my 24-hour cycle! ⚡"
+                    f"Click 'Stay Active' below to keep me hunting! ⚡"
                 )
 
         elif hours_remaining >= 4.5 and hours_remaining <= 5.5:  # 5 hour reminder
@@ -253,7 +253,7 @@ class ReminderService:
                 f"I've been working for {monitoring_hours} hours straight!\n"
                 f"Delivered {jobs_sent_count} matches to your WhatsApp 📱\n\n"
                 f"I've got 5 hours left of *instant notifications*\n"
-                f"(You can still see jobs when I sleep, but no real-time alerts! 😴)"
+                f"Click 'Stay Active' to keep the alerts coming! 🚀"
             )
 
         elif hours_remaining >= 2.5 and hours_remaining <= 3.5:  # 3 hour reminder
@@ -264,7 +264,7 @@ class ReminderService:
                 f"✅ You can still request jobs ('show me jobs')\n"
                 f"❌ But no automatic real-time notifications\n"
                 f"❌ Other candidates get alerts first\n\n"
-                f"Send ANY message to keep instant alerts active! 🚀"
+                f"Click 'Stay Active' to keep your edge! 🚀"
             )
 
         elif hours_remaining >= 0.5 and hours_remaining <= 1.5:  # 1 hour reminder
@@ -275,7 +275,7 @@ class ReminderService:
                 f"📱 No automatic job alerts\n"
                 f"🏃‍♂️ You'll need to manually ask for jobs\n"
                 f"⚡ Others get the speed advantage\n\n"
-                f"**Quick!** Send 'stay awake' or any message!"
+                f"**Quick!** Click 'Stay Active' below! ⚡"
             )
 
         else:  # 15 minutes remaining
@@ -284,7 +284,7 @@ class ReminderService:
                 f"This is it! **Instant alerts** shutting down! 😱\n\n"
                 f"⏰ 15 minutes to save automatic notifications\n"
                 f"⏰ 15 minutes to stay ahead of competition\n\n"
-                f"**SEND ANY MESSAGE NOW!**\n"
+                f"**CLICK 'STAY ACTIVE' NOW!** ⚡\n"
                 f"(You can still get jobs when I sleep, but no auto-alerts!) 🆘"
             )
 
@@ -316,8 +316,10 @@ class ReminderService:
                 hours_remaining, user["jobs_sent_count"], hours_elapsed
             )
 
-            # Send the reminder
-            success = self.whatsapp_service.send_message(user["phone_number"], message)
+            # Send the reminder with Stay Active button
+            success = self.whatsapp_service.send_reminder_with_stay_active_button(
+                user["phone_number"], message
+            )
 
             if success:
                 # Get the correct reminder slot for logging
