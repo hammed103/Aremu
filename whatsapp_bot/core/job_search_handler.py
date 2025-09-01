@@ -87,6 +87,8 @@ class JobSearchHandler:
                                 message.get("job_url"),
                                 message.get("company"),
                                 message.get("job_title"),
+                                message.get("whatsapp_number"),
+                                message.get("email"),
                             )
                         elif (
                             isinstance(message, dict)

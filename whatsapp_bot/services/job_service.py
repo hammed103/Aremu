@@ -122,6 +122,9 @@ class JobService:
                     "job_id": job.get("id"),
                     "company": job.get("company"),
                     "job_title": job.get("title"),
+                    "whatsapp_number": job.get("whatsapp_number")
+                    or job.get("ai_whatsapp_number"),
+                    "email": job.get("email") or job.get("ai_email"),
                 }
                 job_messages.append(job_data)
 

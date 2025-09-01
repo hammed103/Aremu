@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from core.bot_controller import BotController
 from services.whatsapp_service import WhatsAppService
 from services.reminder_service import ReminderService
+from services.scraper_service import ScraperService
 from webhooks.whatsapp_webhook import WhatsAppWebhook
 from utils.logger import setup_logger
 
@@ -72,6 +73,9 @@ try:
     # Initialize reminder service
     reminder_service = ReminderService(whatsapp_service)
 
+    # Initialize scraper service
+    scraper_service = ScraperService()
+
     # Check table status and create if needed
     if not reminder_service.check_table_status():
         reminder_service.create_reminder_log_table()
@@ -82,15 +86,20 @@ try:
     BOT_INITIALIZED = True
     logger.info("Bot initialized set to True")
 
-    # Start reminder daemon in background thread (for production)
+    # Start background services in production
     is_production = os.environ.get("FLASK_ENV") == "production"
     if is_production and BOT_INITIALIZED:
+        # Start reminder daemon
         reminder_thread = threading.Thread(target=run_reminder_daemon, daemon=True)
         reminder_thread.start()
         logger.info("🕐 Reminder daemon started in background thread")
+
+        # Start scraper daemon
+        scraper_service.start_daemon()
+        logger.info("🔧 Scraper daemon started in background thread")
     else:
         logger.info(
-            f"🕐 Reminder daemon not started (production: {is_production}, bot_init: {BOT_INITIALIZED})"
+            f"🕐 Background services not started (production: {is_production}, bot_init: {BOT_INITIALIZED})"
         )
 except Exception as e:
     logger.error(f"❌ Failed to initialize bot components: {e}")
@@ -99,6 +108,7 @@ except Exception as e:
     whatsapp_service = None
     webhook_handler = None
     reminder_service = None
+    scraper_service = None
     BOT_INITIALIZED = False
 
 
@@ -221,6 +231,52 @@ def api_status():
     )
 
 
+@app.route("/api/scrapers/status", methods=["GET"])
+def api_scrapers_status():
+    """Get status of all scrapers"""
+    if scraper_service is None:
+        return jsonify({"error": "Scraper service not initialized"}), 500
+
+    return jsonify(scraper_service.get_status())
+
+
+@app.route("/api/scrapers/run", methods=["POST"])
+def api_run_scraper():
+    """Manually trigger a scraper run"""
+    if scraper_service is None:
+        return jsonify({"error": "Scraper service not initialized"}), 500
+
+    data = request.get_json() or {}
+    scraper_name = data.get("scraper", "all")
+
+    result = scraper_service.run_manual_scrape(scraper_name)
+
+    if result["status"] == "success":
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
+
+
+@app.route("/api/scrapers/start", methods=["POST"])
+def api_start_scraper_daemon():
+    """Start the scraper daemon"""
+    if scraper_service is None:
+        return jsonify({"error": "Scraper service not initialized"}), 500
+
+    scraper_service.start_daemon()
+    return jsonify({"status": "success", "message": "Scraper daemon started"})
+
+
+@app.route("/api/scrapers/stop", methods=["POST"])
+def api_stop_scraper_daemon():
+    """Stop the scraper daemon"""
+    if scraper_service is None:
+        return jsonify({"error": "Scraper service not initialized"}), 500
+
+    scraper_service.stop_daemon()
+    return jsonify({"status": "success", "message": "Scraper daemon stopped"})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     debug_mode = os.environ.get("FLASK_ENV") != "production"
@@ -228,6 +284,8 @@ if __name__ == "__main__":
     logger.info(f"🚀 Starting Aremu unified server on port {port}")
     logger.info(f"📱 Frontend available at: http://localhost:{port}/")
     logger.info(f"🤖 WhatsApp webhook at: http://localhost:{port}/webhook")
-    logger.info("🕐 Reminder daemon will start automatically in production mode")
+    logger.info(
+        "🕐 Background services (reminders + scrapers) start in production mode"
+    )
 
     app.run(host="0.0.0.0", port=port, debug=debug_mode)

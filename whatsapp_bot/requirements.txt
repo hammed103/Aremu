@@ -16,6 +16,13 @@ python-dotenv==1.0.0
 # Database
 psycopg2-binary==2.9.7
 
+# Scraper Dependencies
+python-jobspy>=1.1.0
+pandas>=1.5.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+schedule>=1.2.0
+
 # JSON handling (built-in, but explicit for clarity)
 # json - built-in
 

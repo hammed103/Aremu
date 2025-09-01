@@ -181,9 +181,45 @@ class WhatsAppService:
         job_url: str = None,
         company: str = None,
         job_title: str = None,
+        whatsapp_number: str = None,
+        email: str = None,
     ) -> bool:
         """Send job message with AI summary and CTA URL button that opens website directly"""
         try:
+            # Check if we have both job URL and WhatsApp number for dual buttons
+            if job_url and whatsapp_number:
+                return self.send_job_with_dual_buttons(
+                    phone_number,
+                    job_summary,
+                    job_url,
+                    whatsapp_number,
+                    company,
+                    job_title,
+                )
+
+            # Check if we have both job URL and email for dual buttons (only if no WhatsApp)
+            if job_url and email and not whatsapp_number:
+                return self.send_job_with_dual_buttons_email(
+                    phone_number,
+                    job_summary,
+                    job_url,
+                    email,
+                    company,
+                    job_title,
+                )
+
+            # Prioritize WhatsApp over email when both are available (no job URL)
+            if whatsapp_number and not job_url:
+                return self.send_job_with_whatsapp_button(
+                    phone_number, job_summary, whatsapp_number, company, job_title
+                )
+
+            # If only email and no WhatsApp, send with email button
+            if email and not job_url and not whatsapp_number:
+                return self.send_job_with_email_button(
+                    phone_number, job_summary, email, company, job_title
+                )
+
             # If no job URL, send as regular text message
             if not job_url:
                 return self.send_message(phone_number, job_summary)
@@ -222,6 +258,348 @@ class WhatsAppService:
                 )
             else:
                 fallback_message = job_summary
+            return self.send_message(phone_number, fallback_message)
+
+    def send_job_with_whatsapp_button(
+        self,
+        phone_number: str,
+        job_summary: str,
+        whatsapp_number: str,
+        company: str = None,
+        job_title: str = None,
+    ) -> bool:
+        """Send job message with WhatsApp contact CTA button"""
+        try:
+            # Format WhatsApp number for wa.me link
+            wa_link = self._format_whatsapp_link(whatsapp_number)
+
+            # Get smart WhatsApp button text
+            button_text = self._get_whatsapp_button_text(company, job_title)
+
+            # Send as CTA URL message with WhatsApp contact button
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "cta_url",
+                    "body": {"text": job_summary},
+                    "action": {
+                        "name": "cta_url",
+                        "parameters": {
+                            "display_text": button_text,
+                            "url": wa_link,
+                        },
+                    },
+                },
+            }
+            return self._send_message(payload)
+
+        except Exception as e:
+            logger.error(f"Error sending job with WhatsApp button: {e}")
+            # Fallback to regular message with WhatsApp number
+            fallback_message = f"{job_summary}\n\n📱 WhatsApp: {whatsapp_number}"
+            return self.send_message(phone_number, fallback_message)
+
+    def send_job_with_email_button(
+        self,
+        phone_number: str,
+        job_summary: str,
+        email: str,
+        company: str = None,
+        job_title: str = None,
+    ) -> bool:
+        """Send job message with email contact CTA button"""
+        try:
+            # Format email for mailto link
+            mailto_link = f"mailto:{email}"
+
+            # Get email button text
+            button_text = self._get_email_button_text(company, job_title)
+
+            # Send as CTA URL message with email contact button
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "cta_url",
+                    "body": {"text": job_summary},
+                    "action": {
+                        "name": "cta_url",
+                        "parameters": {
+                            "display_text": button_text,
+                            "url": mailto_link,
+                        },
+                    },
+                },
+            }
+            return self._send_message(payload)
+
+        except Exception as e:
+            logger.error(f"Error sending job with email button: {e}")
+            # Fallback to regular message with email
+            fallback_message = f"{job_summary}\n\n📧 Email: {email}"
+            return self.send_message(phone_number, fallback_message)
+
+    def send_job_with_dual_buttons(
+        self,
+        phone_number: str,
+        job_summary: str,
+        job_url: str,
+        whatsapp_number: str,
+        company: str = None,
+        job_title: str = None,
+    ) -> bool:
+        """Send job message with both Apply and WhatsApp contact buttons"""
+        try:
+            # Format WhatsApp number for wa.me link
+            wa_link = self._format_whatsapp_link(whatsapp_number)
+
+            # Get apply button text
+            apply_button_text = apply_button_designer.get_apply_button_text(
+                job_url, company, job_title
+            )
+
+            # Create dual buttons (reply buttons for dual CTA)
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": f"apply_{hash(job_url) % 10000}",
+                        "title": apply_button_text[:20],  # WhatsApp limit
+                    },
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": f"contact_{hash(whatsapp_number) % 10000}",
+                        "title": self._get_whatsapp_button_text(company, job_title)[
+                            :20
+                        ],
+                    },
+                },
+            ]
+
+            # Send with reply buttons and include URLs in message
+            enhanced_summary = (
+                f"{job_summary}\n\n" f"🔗 Apply: {job_url}\n" f"📱 WhatsApp: {wa_link}"
+            )
+
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": enhanced_summary},
+                    "action": {"buttons": buttons},
+                },
+            }
+            return self._send_message(payload)
+
+        except Exception as e:
+            logger.error(f"Error sending job with dual buttons: {e}")
+            # Fallback to regular message with both links
+            fallback_message = (
+                f"{job_summary}\n\n"
+                f"🔗 Apply: {job_url}\n"
+                f"📱 WhatsApp: {self._format_whatsapp_link(whatsapp_number)}"
+            )
+            return self.send_message(phone_number, fallback_message)
+
+    def _format_whatsapp_link(self, whatsapp_number: str) -> str:
+        """Format WhatsApp number into wa.me link"""
+        try:
+            # Clean the number
+            clean_number = "".join(filter(str.isdigit, whatsapp_number))
+
+            # Add country code if not present (assume Nigeria +234)
+            if clean_number.startswith("0"):
+                clean_number = "234" + clean_number[1:]
+            elif not clean_number.startswith("234"):
+                clean_number = "234" + clean_number
+
+            return f"https://wa.me/{clean_number}"
+
+        except Exception as e:
+            logger.error(f"Error formatting WhatsApp link: {e}")
+            return f"https://wa.me/{whatsapp_number}"
+
+    def _get_whatsapp_button_text(
+        self, company: str = None, job_title: str = None
+    ) -> str:
+        """Get smart WhatsApp button text based on context"""
+        try:
+            # Company-specific WhatsApp buttons
+            if company:
+                company_lower = company.lower()
+
+                # Tech companies
+                if "google" in company_lower:
+                    return "📱 WhatsApp Google"
+                elif "microsoft" in company_lower:
+                    return "📱 WhatsApp Microsoft"
+                elif "meta" in company_lower:
+                    return "📱 WhatsApp Meta"
+                elif "dangote" in company_lower:
+                    return "📱 WhatsApp Dangote"
+                elif "mtn" in company_lower:
+                    return "📱 WhatsApp MTN"
+                elif "gtbank" in company_lower or "gtb" in company_lower:
+                    return "📱 WhatsApp GTBank"
+                elif "access" in company_lower and "bank" in company_lower:
+                    return "📱 WhatsApp Access"
+                elif "zenith" in company_lower:
+                    return "📱 WhatsApp Zenith"
+
+                # Generic company name (truncate if too long)
+                clean_company = company.replace("Limited", "Ltd").replace(
+                    "Nigeria", "NG"
+                )
+                if len(clean_company) <= 12:
+                    return f"📱 WhatsApp {clean_company}"
+
+            # Role-specific WhatsApp buttons
+            if job_title:
+                title_lower = job_title.lower()
+                if "manager" in title_lower:
+                    return "📱 WhatsApp Manager"
+                elif "developer" in title_lower or "engineer" in title_lower:
+                    return "📱 WhatsApp Team"
+                elif "sales" in title_lower:
+                    return "📱 WhatsApp Sales"
+                elif "hr" in title_lower or "human" in title_lower:
+                    return "📱 WhatsApp HR"
+                elif "finance" in title_lower:
+                    return "📱 WhatsApp Finance"
+                elif "marketing" in title_lower:
+                    return "📱 WhatsApp Marketing"
+
+            # Default professional button
+            return "📱 WhatsApp Employer"
+
+        except Exception as e:
+            logger.error(f"Error generating WhatsApp button text: {e}")
+            return "📱 WhatsApp Employer"
+
+    def _get_email_button_text(self, company: str = None, job_title: str = None) -> str:
+        """Get smart email button text based on context"""
+        try:
+            # Company-specific email buttons
+            if company:
+                company_lower = company.lower()
+
+                # Tech companies
+                if "google" in company_lower:
+                    return "📧 Email Google"
+                elif "microsoft" in company_lower:
+                    return "📧 Email Microsoft"
+                elif "meta" in company_lower:
+                    return "📧 Email Meta"
+                elif "dangote" in company_lower:
+                    return "📧 Email Dangote"
+                elif "mtn" in company_lower:
+                    return "📧 Email MTN"
+                elif "gtbank" in company_lower or "gtb" in company_lower:
+                    return "📧 Email GTBank"
+                elif "access" in company_lower and "bank" in company_lower:
+                    return "📧 Email Access"
+                elif "zenith" in company_lower:
+                    return "📧 Email Zenith"
+
+                # Generic company name (truncate if too long)
+                clean_company = company.replace("Limited", "Ltd").replace(
+                    "Nigeria", "NG"
+                )
+                if len(clean_company) <= 12:
+                    return f"📧 Email {clean_company}"
+
+            # Role-specific email buttons
+            if job_title:
+                title_lower = job_title.lower()
+                if "manager" in title_lower:
+                    return "📧 Email Manager"
+                elif "developer" in title_lower or "engineer" in title_lower:
+                    return "📧 Email Team"
+                elif "sales" in title_lower:
+                    return "📧 Email Sales"
+                elif "hr" in title_lower or "human" in title_lower:
+                    return "📧 Email HR"
+                elif "finance" in title_lower:
+                    return "📧 Email Finance"
+                elif "marketing" in title_lower:
+                    return "📧 Email Marketing"
+
+            # Default professional button
+            return "📧 Email Employer"
+
+        except Exception as e:
+            logger.error(f"Error generating email button text: {e}")
+            return "📧 Email Employer"
+
+    def send_job_with_dual_buttons_email(
+        self,
+        phone_number: str,
+        job_summary: str,
+        job_url: str,
+        email: str,
+        company: str = None,
+        job_title: str = None,
+    ) -> bool:
+        """Send job message with both Apply and Email contact buttons"""
+        try:
+            # Format email for mailto link
+            mailto_link = f"mailto:{email}"
+
+            # Get apply button text
+            apply_button_text = apply_button_designer.get_apply_button_text(
+                job_url, company, job_title
+            )
+
+            # Create dual buttons (reply buttons for dual CTA)
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": f"apply_{hash(job_url) % 10000}",
+                        "title": apply_button_text[:20],  # WhatsApp limit
+                    },
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": f"email_{hash(email) % 10000}",
+                        "title": self._get_email_button_text(company, job_title)[:20],
+                    },
+                },
+            ]
+
+            # Send with reply buttons and include URLs in message
+            enhanced_summary = (
+                f"{job_summary}\n\n" f"🔗 Apply: {job_url}\n" f"📧 Email: {mailto_link}"
+            )
+
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": enhanced_summary},
+                    "action": {"buttons": buttons},
+                },
+            }
+            return self._send_message(payload)
+
+        except Exception as e:
+            logger.error(f"Error sending job with dual buttons (email): {e}")
+            # Fallback to regular message with both links
+            fallback_message = (
+                f"{job_summary}\n\n"
+                f"🔗 Apply: {job_url}\n"
+                f"📧 Email: mailto:{email}"
+            )
             return self.send_message(phone_number, fallback_message)
 
     def _send_message(self, payload: dict) -> bool:
