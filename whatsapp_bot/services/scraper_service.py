@@ -48,12 +48,6 @@ class ScraperService:
                 "module": None,
                 "last_run": None,
             },
-            "baileys": {
-                "enabled": True,  # WhatsApp scraper
-                "interval_hours": 24,  # Run once daily (starts continuous process)
-                "module": None,
-                "last_run": None,
-            },
             "indeed": {
                 "enabled": False,  # Disabled until implemented
                 "interval_hours": 12,
@@ -100,21 +94,6 @@ class ScraperService:
             logger.error(f"❌ Failed to import LinkedIn scraper: {e}")
             self.scrapers["linkedin"]["enabled"] = False
             self.scrapers["linkedin"]["module"] = None
-
-        try:
-            # Import Baileys WhatsApp scraper
-            baileys_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "scraper"
-            )
-            sys.path.append(baileys_path)
-            from baileys_scraper import BaileysWhatsAppScraper
-
-            self.scrapers["baileys"]["module"] = BaileysWhatsAppScraper
-            logger.info("✅ Baileys WhatsApp scraper imported successfully")
-        except ImportError as e:
-            logger.error(f"❌ Failed to import Baileys scraper: {e}")
-            self.scrapers["baileys"]["enabled"] = False
-            self.scrapers["baileys"]["module"] = None
 
         try:
             # Import Indeed scraper
@@ -248,29 +227,6 @@ class ScraperService:
             logger.error(f"❌ Prosple scraper error: {e}")
             return False
 
-    def _run_baileys_scraper(self) -> bool:
-        """Run the Baileys WhatsApp scraper"""
-        try:
-            logger.info("🚀 Starting Baileys WhatsApp scraper...")
-            scraper_class = self.scrapers["baileys"]["module"]
-            scraper = scraper_class()
-
-            # Run comprehensive scrape (starts continuous process)
-            success = scraper.run_comprehensive_scrape()
-
-            if success:
-                logger.info("✅ Baileys WhatsApp scraper started successfully")
-                logger.info("📱 WhatsApp scraper is now running continuously")
-                self.scrapers["baileys"]["last_run"] = datetime.now()
-                return True
-            else:
-                logger.error("❌ Baileys WhatsApp scraper failed")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ Baileys WhatsApp scraper error: {e}")
-            return False
-
     def _run_scraper_cycle(self):
         """Run one cycle of all enabled scrapers"""
         self.cycle_count += 1
@@ -287,8 +243,6 @@ class ScraperService:
                     success = self._run_jobspy_scraper()
                 elif scraper_name == "linkedin":
                     success = self._run_linkedin_scraper()
-                elif scraper_name == "baileys":
-                    success = self._run_baileys_scraper()
                 elif scraper_name == "indeed":
                     success = self._run_indeed_scraper()
                 elif scraper_name == "prosple":
@@ -398,8 +352,7 @@ class ScraperService:
                 success = self._run_jobspy_scraper()
             elif scraper_name == "linkedin":
                 success = self._run_linkedin_scraper()
-            elif scraper_name == "baileys":
-                success = self._run_baileys_scraper()
+
             elif scraper_name == "indeed":
                 success = self._run_indeed_scraper()
             elif scraper_name == "prosple":
