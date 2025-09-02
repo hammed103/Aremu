@@ -366,7 +366,8 @@ class AIEnhancedJobParser:
                 canonical_job["ai_enhancement_date"] = datetime.now().isoformat()
                 self.stats["ai_enhanced"] += 1
 
-                logger.debug(f"✅ AI enhanced: {title[:30]}...")
+                title_display = title[:30] if title else "Unknown"
+                logger.debug(f"✅ AI enhanced: {title_display}...")
 
             except json.JSONDecodeError as json_error:
                 logger.warning(f"⚠️ JSON decode error for {title[:30]}: {json_error}")
@@ -378,7 +379,13 @@ class AIEnhancedJobParser:
                 self.stats["ai_enhanced"] += 1
 
         except Exception as e:
-            logger.error(f"❌ AI enhancement failed for {title[:30]}: {e}")
+            title_display = title[:30] if title else "Unknown"
+            logger.error(f"❌ AI enhancement failed for {title_display}: {e}")
+            logger.error(f"❌ Error type: {type(e)}")
+            logger.error(f"❌ Error details: {str(e)}")
+            import traceback
+
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             self.stats["errors"] += 1
 
         return canonical_job
@@ -463,6 +470,12 @@ class AIEnhancedJobParser:
                     logger.error(
                         f"❌ Error processing job {raw_job.get('id', 'unknown')}: {e}"
                     )
+                    logger.error(f"❌ Error type: {type(e)}")
+                    logger.error(f"❌ Error details: {str(e)}")
+                    import traceback
+
+                    logger.error(f"❌ Traceback: {traceback.format_exc()}")
+                    logger.error(f"❌ Raw job data: {raw_job}")
                     self.stats["errors"] += 1
 
             self.connection.commit()
@@ -476,28 +489,62 @@ class AIEnhancedJobParser:
         """Convert raw job to canonical format from JSONB structure"""
         raw_data = raw_job.get("raw_data", {})
 
-        # Extract email and WhatsApp from description or emails field
-        description = raw_data.get("description", "")
-        email = raw_data.get("emails") or self.extract_email_from_text(description)
-        whatsapp = self.extract_whatsapp_from_text(description)
+        # Handle case where raw_data is None or not a dict
+        if not isinstance(raw_data, dict):
+            logger.warning(
+                f"⚠️ Invalid raw_data for job {raw_job.get('id')}: {type(raw_data)}"
+            )
+            raw_data = {}
 
-        return {
-            "title": raw_data.get("title"),
-            "company": raw_data.get("company"),
-            "location": raw_data.get("location"),
-            "job_url": raw_data.get("job_url"),
-            "description": description,
-            "employment_type": raw_data.get("job_type"),
-            "salary_min": raw_data.get("min_amount"),
-            "salary_max": raw_data.get("max_amount"),
-            "salary_currency": raw_data.get("currency"),
-            "email": email,
-            "whatsapp_number": whatsapp,
-            "source": raw_job.get("source", "unknown"),
-            "source_job_id": raw_job.get("source_job_id"),
-            "raw_job_id": raw_job.get("id"),
-            "posted_date": raw_data.get("date_posted"),
-        }
+        # Handle different data structures based on source
+        source = raw_job.get("source", "unknown")
+
+        if source == "whatsapp":
+            # WhatsApp jobs have text field with full job posting
+            text = raw_data.get("text", "")
+            email = self.extract_email_from_text(text)
+            whatsapp = self.extract_whatsapp_from_text(text)
+
+            return {
+                "title": self.extract_title_from_whatsapp_text(text),
+                "company": None,  # Will be extracted by AI
+                "location": None,  # Will be extracted by AI
+                "job_url": None,
+                "description": text,
+                "employment_type": None,  # Will be extracted by AI
+                "salary_min": None,
+                "salary_max": None,
+                "salary_currency": None,
+                "email": email,
+                "whatsapp_number": whatsapp,
+                "source": source,
+                "source_job_id": raw_job.get("source_job_id"),
+                "raw_job_id": raw_job.get("id"),
+                "posted_date": raw_data.get("date_posted"),
+            }
+        else:
+            # Web scraped jobs have structured fields
+            description = raw_data.get("description", "") or ""
+            email = raw_data.get("emails") or self.extract_email_from_text(description)
+            whatsapp = self.extract_whatsapp_from_text(description)
+
+            return {
+                "title": raw_data.get("title"),
+                "company": raw_data.get("company"),
+                "location": raw_data.get("location"),
+                "job_url": raw_data.get("job_url"),
+                "description": description,
+                "employment_type": raw_data.get("job_type"),
+                "salary_min": raw_data.get("min_amount"),
+                "salary_max": raw_data.get("max_amount"),
+                "salary_currency": raw_data.get("currency"),
+                "email": email,
+                "whatsapp_number": whatsapp,
+                "source": source,
+                "source_job_id": raw_job.get("source_job_id"),
+                "raw_job_id": raw_job.get("id"),
+                "posted_date": raw_data.get("date_posted"),
+            }
 
     def extract_email_from_text(self, text: str) -> Optional[str]:
         """Extract email from text"""
@@ -508,6 +555,46 @@ class AIEnhancedJobParser:
         email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
         matches = re.findall(email_pattern, text)
         return matches[0] if matches else None
+
+    def extract_title_from_whatsapp_text(self, text: str) -> Optional[str]:
+        """Extract job title from WhatsApp text"""
+        if not text or not isinstance(text, str):
+            return "Job Opportunity"  # Default title
+
+        import re
+
+        # Look for common patterns like "Position Title:", "*Position:", etc.
+        title_patterns = [
+            r"Position Title:\s*([^\n*]+)",
+            r"\*Position[^:]*:\s*([^\n*]+)",
+            r"Job Title:\s*([^\n*]+)",
+            r"Role:\s*([^\n*]+)",
+            r"We are hiring[^:]*:\s*([^\n*]+)",
+            r"Looking for[^:]*:\s*([^\n*]+)",
+        ]
+
+        for pattern in title_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                title = match.group(1).strip()
+                # Clean up the title
+                title = re.sub(r"[*_]+", "", title)  # Remove markdown
+                return title[:100] if title else "Job Opportunity"
+
+        # If no pattern found, try to extract from first line
+        lines = text.split("\n")
+        for line in lines[:3]:  # Check first 3 lines
+            line = line.strip()
+            if len(line) > 10 and len(line) < 100:  # Reasonable title length
+                # Clean up the line
+                line = re.sub(r"[*_]+", "", line)
+                if any(
+                    word in line.lower()
+                    for word in ["position", "job", "role", "hiring", "vacancy"]
+                ):
+                    return line
+
+        return "Job Opportunity"  # Default fallback
 
     def extract_whatsapp_from_text(self, text: str) -> Optional[str]:
         """Extract WhatsApp/phone number from text"""
