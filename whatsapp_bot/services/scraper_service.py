@@ -60,6 +60,12 @@ class ScraperService:
                 "module": None,
                 "last_run": None,
             },
+            "data_parser": {
+                "enabled": True,  # AI job data parser
+                "interval_hours": 1,  # Run every hour to process new jobs
+                "module": None,
+                "last_run": None,
+            },
         }
 
         logger.info("🔧 ScraperService initialized")
@@ -124,6 +130,21 @@ class ScraperService:
             logger.error(f"❌ Failed to import Prosple scraper: {e}")
             self.scrapers["prosple"]["enabled"] = False
             self.scrapers["prosple"]["module"] = None
+
+        try:
+            # Import AI Enhanced Data Parser
+            parser_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "data_parser", "parsers"
+            )
+            sys.path.append(parser_path)
+            from ai_enhanced_parser import AIEnhancedJobParser
+
+            self.scrapers["data_parser"]["module"] = AIEnhancedJobParser
+            logger.info("✅ AI Enhanced Data Parser imported successfully")
+        except ImportError as e:
+            logger.error(f"❌ Failed to import Data Parser: {e}")
+            self.scrapers["data_parser"]["enabled"] = False
+            self.scrapers["data_parser"]["module"] = None
 
     def _should_run_scraper(self, scraper_name: str) -> bool:
         """Check if a scraper should run based on its interval"""
@@ -227,6 +248,29 @@ class ScraperService:
             logger.error(f"❌ Prosple scraper error: {e}")
             return False
 
+    def _run_data_parser(self) -> bool:
+        """Run the AI Enhanced Data Parser"""
+        try:
+            logger.info("🤖 Starting AI Enhanced Data Parser...")
+            parser_class = self.scrapers["data_parser"]["module"]
+            parser = parser_class()
+
+            # Process raw jobs with AI enhancement
+            parser.process_raw_jobs(limit=100)  # Process up to 100 jobs per run
+            result = True
+
+            if result:
+                logger.info("✅ AI Enhanced Data Parser completed successfully")
+                self.scrapers["data_parser"]["last_run"] = datetime.now()
+                return True
+            else:
+                logger.error("❌ AI Enhanced Data Parser failed")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ AI Enhanced Data Parser error: {e}")
+            return False
+
     def _run_scraper_cycle(self):
         """Run one cycle of all enabled scrapers"""
         self.cycle_count += 1
@@ -247,6 +291,8 @@ class ScraperService:
                     success = self._run_indeed_scraper()
                 elif scraper_name == "prosple":
                     success = self._run_prosple_scraper()
+                elif scraper_name == "data_parser":
+                    success = self._run_data_parser()
                 else:
                     logger.info(f"⚠️ {scraper_name} scraper not implemented yet")
                     continue
@@ -357,6 +403,8 @@ class ScraperService:
                 success = self._run_indeed_scraper()
             elif scraper_name == "prosple":
                 success = self._run_prosple_scraper()
+            elif scraper_name == "data_parser":
+                success = self._run_data_parser()
             else:
                 return {
                     "status": "error",
