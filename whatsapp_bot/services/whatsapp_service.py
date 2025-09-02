@@ -273,8 +273,10 @@ class WhatsAppService:
             # Format WhatsApp number for wa.me link
             wa_link = self._format_whatsapp_link(whatsapp_number)
 
-            # Get smart WhatsApp button text
-            button_text = self._get_whatsapp_button_text(company, job_title)
+            # Get smart WhatsApp button text (ensure 20 char limit)
+            button_text = self._ensure_button_text_length(
+                self._get_whatsapp_button_text(company, job_title)
+            )
 
             # Send as CTA URL message with WhatsApp contact button
             payload = {
@@ -431,57 +433,64 @@ class WhatsAppService:
     ) -> str:
         """Get smart WhatsApp button text based on context"""
         try:
-            # Company-specific WhatsApp buttons
+            # Company-specific WhatsApp buttons (max 20 chars)
             if company:
                 company_lower = company.lower()
 
                 # Tech companies
                 if "google" in company_lower:
-                    return "📱 WhatsApp Google"
+                    return "📱 Contact Google"
                 elif "microsoft" in company_lower:
-                    return "📱 WhatsApp Microsoft"
+                    return "📱 Contact Microsoft"
                 elif "meta" in company_lower:
-                    return "📱 WhatsApp Meta"
+                    return "📱 Contact Meta"
                 elif "dangote" in company_lower:
-                    return "📱 WhatsApp Dangote"
+                    return "📱 Contact Dangote"
                 elif "mtn" in company_lower:
-                    return "📱 WhatsApp MTN"
+                    return "📱 Contact MTN"
                 elif "gtbank" in company_lower or "gtb" in company_lower:
-                    return "📱 WhatsApp GTBank"
+                    return "📱 Contact GTBank"
                 elif "access" in company_lower and "bank" in company_lower:
-                    return "📱 WhatsApp Access"
+                    return "📱 Contact Access"
                 elif "zenith" in company_lower:
-                    return "📱 WhatsApp Zenith"
+                    return "📱 Contact Zenith"
 
                 # Generic company name (truncate if too long)
                 clean_company = company.replace("Limited", "Ltd").replace(
                     "Nigeria", "NG"
                 )
-                if len(clean_company) <= 12:
-                    return f"📱 WhatsApp {clean_company}"
+                if len(clean_company) <= 10:  # Leave room for "📱 Contact "
+                    return f"📱 Contact {clean_company}"
 
             # Role-specific WhatsApp buttons
             if job_title:
                 title_lower = job_title.lower()
                 if "manager" in title_lower:
-                    return "📱 WhatsApp Manager"
+                    return "📱 Contact Manager"
                 elif "developer" in title_lower or "engineer" in title_lower:
-                    return "📱 WhatsApp Team"
+                    return "📱 Contact Team"
                 elif "sales" in title_lower:
-                    return "📱 WhatsApp Sales"
+                    return "📱 Contact Sales"
                 elif "hr" in title_lower or "human" in title_lower:
-                    return "📱 WhatsApp HR"
+                    return "📱 Contact HR"
                 elif "finance" in title_lower:
-                    return "📱 WhatsApp Finance"
+                    return "📱 Contact Finance"
                 elif "marketing" in title_lower:
-                    return "📱 WhatsApp Marketing"
+                    return "📱 Contact Marketing"
 
-            # Default professional button
-            return "📱 WhatsApp Employer"
+            # Default professional button (19 chars - within limit)
+            return "📱 Contact Employer"
 
         except Exception as e:
             logger.error(f"Error generating WhatsApp button text: {e}")
             return "📱 WhatsApp Employer"
+
+    def _ensure_button_text_length(self, text: str) -> str:
+        """Ensure button text is within WhatsApp's 20 character limit"""
+        if len(text) <= 20:
+            return text
+        # Truncate and add ellipsis if needed
+        return text[:17] + "..."
 
     def _get_email_button_text(self, company: str = None, job_title: str = None) -> str:
         """Get smart email button text based on context"""
