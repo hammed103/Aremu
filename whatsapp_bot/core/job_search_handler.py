@@ -64,8 +64,9 @@ class JobSearchHandler:
 
         # Send all job messages sequentially
         if job_messages:
-            # Send first message (introduction)
+            # Send first message (introduction) immediately
             first_message = job_messages[0]
+            self.whatsapp_service.send_message(phone_number, first_message)
 
             # Send remaining messages (individual jobs) with small delays AFTER the first message
             if len(job_messages) > 1:
@@ -124,8 +125,15 @@ class JobSearchHandler:
     ) -> str:
         """Handle 'More Jobs' button click - shows next batch of jobs with CTA buttons"""
         try:
+            logger.info(
+                f"🔄 HANDLE_MORE_JOBS: Starting for user_id={user_id}, phone={phone_number}"
+            )
+
             # Check if user has meaningful preferences
             if not self._has_meaningful_preferences(user_prefs):
+                logger.warning(
+                    f"❌ HANDLE_MORE_JOBS: User {user_id} has no meaningful preferences"
+                )
                 return "Please set your preferences first. Type 'menu' and select 'Change Preferences'."
 
             # Get user's name for personalized response
@@ -137,29 +145,51 @@ class JobSearchHandler:
                 if user_name_result and user_name_result[0]
                 else None
             )
+            logger.info(f"👤 HANDLE_MORE_JOBS: User name = {user_name}")
 
             # Get MORE job messages using the job service
+            logger.info(f"🔍 HANDLE_MORE_JOBS: Calling job_service.get_more_jobs()")
             job_messages = self.job_service.get_more_jobs(
                 user_prefs, user_name, user_id
+            )
+            logger.info(
+                f"📋 HANDLE_MORE_JOBS: Received {len(job_messages)} job messages"
             )
 
             # Send all job messages sequentially with CTA buttons
             if job_messages:
-                # Send first message (introduction)
+                logger.info(
+                    f"📤 HANDLE_MORE_JOBS: Sending {len(job_messages)} messages"
+                )
+
+                # Send first message (introduction) immediately
                 first_message = job_messages[0]
+                logger.info(
+                    f"📨 HANDLE_MORE_JOBS: Sending intro message: {first_message[:100]}..."
+                )
+                self.whatsapp_service.send_message(phone_number, first_message)
 
                 # Send remaining messages (individual jobs) with small delays
                 if len(job_messages) > 1:
+                    logger.info(
+                        f"⏰ HANDLE_MORE_JOBS: Starting delayed sending of {len(job_messages)-1} remaining messages"
+                    )
 
                     def send_delayed_messages():
-                        for message in job_messages[1:]:
+                        for i, message in enumerate(job_messages[1:], 1):
                             time.sleep(1)  # Small delay between messages
+                            logger.info(
+                                f"📨 HANDLE_MORE_JOBS: Processing message {i}/{len(job_messages)-1}, type: {type(message)}"
+                            )
 
                             # Handle different message types
                             if (
                                 isinstance(message, dict)
                                 and message.get("type") == "job_with_button"
                             ):
+                                logger.info(
+                                    f"🔘 HANDLE_MORE_JOBS: Sending job_with_button - URL: {message.get('job_url')}, Company: {message.get('company')}"
+                                )
                                 # Send job with apply button including company and title
                                 self.whatsapp_service.send_job_with_apply_button(
                                     phone_number,

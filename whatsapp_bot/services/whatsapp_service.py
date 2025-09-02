@@ -186,8 +186,20 @@ class WhatsAppService:
     ) -> bool:
         """Send job message with AI summary and CTA URL button that opens website directly"""
         try:
+            logger.info(
+                f"🔘 SEND_JOB_WITH_APPLY_BUTTON: Starting for phone={phone_number}"
+            )
+            logger.info(f"🔗 SEND_JOB_WITH_APPLY_BUTTON: job_url={job_url}")
+            logger.info(
+                f"📱 SEND_JOB_WITH_APPLY_BUTTON: whatsapp_number={whatsapp_number}"
+            )
+            logger.info(f"🏢 SEND_JOB_WITH_APPLY_BUTTON: company={company}")
+            logger.info(f"💼 SEND_JOB_WITH_APPLY_BUTTON: job_title={job_title}")
             # Check if we have both job URL and WhatsApp number for dual buttons
             if job_url and whatsapp_number:
+                logger.info(
+                    f"🔄 SEND_JOB_WITH_APPLY_BUTTON: Using dual buttons (URL + WhatsApp)"
+                )
                 return self.send_job_with_dual_buttons(
                     phone_number,
                     job_summary,
@@ -199,6 +211,9 @@ class WhatsAppService:
 
             # Check if we have both job URL and email for dual buttons (only if no WhatsApp)
             if job_url and email and not whatsapp_number:
+                logger.info(
+                    f"📧 SEND_JOB_WITH_APPLY_BUTTON: Using dual buttons (URL + Email)"
+                )
                 return self.send_job_with_dual_buttons_email(
                     phone_number,
                     job_summary,
@@ -210,24 +225,35 @@ class WhatsAppService:
 
             # Prioritize WhatsApp over email when both are available (no job URL)
             if whatsapp_number and not job_url:
+                logger.info(
+                    f"📱 SEND_JOB_WITH_APPLY_BUTTON: Using single WhatsApp button (no URL)"
+                )
                 return self.send_job_with_whatsapp_button(
                     phone_number, job_summary, whatsapp_number, company, job_title
                 )
 
             # If only email and no WhatsApp, send with email button
             if email and not job_url and not whatsapp_number:
+                logger.info(f"📧 SEND_JOB_WITH_APPLY_BUTTON: Using single email button")
                 return self.send_job_with_email_button(
                     phone_number, job_summary, email, company, job_title
                 )
 
             # If no job URL and no contact info, send as regular text message
             if not job_url and not email and not whatsapp_number:
+                logger.warning(
+                    f"⚠️ SEND_JOB_WITH_APPLY_BUTTON: No URL or contact info - sending plain text"
+                )
                 return self.send_message(phone_number, job_summary)
 
             # Get smart apply button text based on context
+            logger.info(
+                f"🔗 SEND_JOB_WITH_APPLY_BUTTON: Using single URL button as fallback"
+            )
             button_text = apply_button_designer.get_apply_button_text(
                 job_url, company, job_title
             )
+            logger.info(f"🔘 SEND_JOB_WITH_APPLY_BUTTON: Button text = '{button_text}'")
 
             # Send as CTA URL message with smart Apply button
             payload = {
@@ -246,6 +272,7 @@ class WhatsAppService:
                     },
                 },
             }
+            logger.info(f"📤 SEND_JOB_WITH_APPLY_BUTTON: Sending CTA URL payload")
             return self._send_message(payload)
 
         except Exception as e:
@@ -614,6 +641,13 @@ class WhatsAppService:
     def _send_message(self, payload: dict) -> bool:
         """Helper method to send a message with the given payload"""
         try:
+            logger.info(
+                f"📤 _SEND_MESSAGE: Sending payload type: {payload.get('type', 'unknown')}"
+            )
+            if payload.get("type") == "interactive":
+                interactive_type = payload.get("interactive", {}).get("type", "unknown")
+                logger.info(f"🔄 _SEND_MESSAGE: Interactive type: {interactive_type}")
+
             headers = {
                 "Authorization": f"Bearer {self.whatsapp_token}",
                 "Content-Type": "application/json",
@@ -624,14 +658,15 @@ class WhatsAppService:
             )
 
             if response.status_code == 200:
-                logger.info(f"✅ Message sent to {payload['to']}")
+                logger.info(f"✅ _SEND_MESSAGE: Message sent to {payload['to']}")
                 return True
             else:
                 logger.error(
-                    f"❌ Failed to send message: {response.status_code} - {response.text}"
+                    f"❌ _SEND_MESSAGE: Failed to send message: {response.status_code} - {response.text}"
                 )
+                logger.error(f"❌ _SEND_MESSAGE: Payload was: {payload}")
                 return False
 
         except Exception as e:
-            logger.error(f"❌ Error sending WhatsApp message: {e}")
+            logger.error(f"❌ _SEND_MESSAGE: Error sending WhatsApp message: {e}")
             return False
