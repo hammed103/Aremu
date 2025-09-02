@@ -10,7 +10,7 @@ import os
 from typing import List, Dict, Optional
 
 # Add WhatsApp bot path for imports
-whatsapp_bot_path = os.path.join(os.path.dirname(__file__), "..", "whatsapp_bot")
+whatsapp_bot_path = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, whatsapp_bot_path)  # Use insert(0, ...) for higher priority
 
 from legacy.database_manager import DatabaseManager

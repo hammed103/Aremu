@@ -13,9 +13,13 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
 
-# Add smart delivery engine
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from smart_delivery_engine import SmartDeliveryEngine
+# Add smart delivery engine (optional for standalone testing)
+try:
+    sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+    from smart_delivery_engine import SmartDeliveryEngine
+except ImportError:
+    print("⚠️ Smart delivery engine not available - running in parser-only mode")
+    SmartDeliveryEngine = None
 
 # Setup logging
 logging.basicConfig(
@@ -91,10 +95,15 @@ class AIEnhancedJobParser:
 
     def setup_smart_delivery(self):
         """Setup Smart Delivery Engine with WhatsApp credentials"""
+        if SmartDeliveryEngine is None:
+            logger.info("⚠️ Smart delivery engine not available - skipping setup")
+            self.smart_delivery = None
+            return
+
         try:
             # Load WhatsApp credentials from WhatsApp bot .env file
             whatsapp_env_path = os.path.join(
-                os.path.dirname(__file__), "..", "..", "whatsapp_bot", ".env"
+                os.path.dirname(__file__), "..", "..", ".env"
             )
             whatsapp_token = None
             whatsapp_phone_id = None
@@ -278,12 +287,26 @@ class AIEnhancedJobParser:
             """
 
             response = self.openai_client.chat.completions.create(
-                model="gpt-4.1-nano",
+                model="gpt-4o-mini",  # Use valid OpenAI model
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
             )
 
-            ai_response = response.choices[0].message.content.strip()
+            # Check if response has choices
+            if (
+                not hasattr(response, "choices")
+                or not response.choices
+                or len(response.choices) == 0
+            ):
+                logger.error(f"❌ No AI response choices for {title[:30]}")
+                return canonical_job
+
+            ai_response = response.choices[0].message.content
+            if not ai_response:
+                logger.error(f"❌ Empty AI response for {title[:30]}")
+                return canonical_job
+
+            ai_response = ai_response.strip()
 
             # Clean up JSON response
             if ai_response.startswith("```json"):
