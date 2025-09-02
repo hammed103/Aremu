@@ -180,7 +180,9 @@ class JobService:
                 user_id = self.db.get_or_create_user(temp_phone, "Search User")
 
             # Get jobs using intelligent matcher
-            jobs = self.job_matcher.find_matching_jobs(user_preferences, limit=15)
+            jobs = self.intelligent_matcher.find_matching_jobs(
+                user_preferences, limit=15
+            )
 
             if not jobs:
                 return ["No jobs found matching your preferences at the moment."]

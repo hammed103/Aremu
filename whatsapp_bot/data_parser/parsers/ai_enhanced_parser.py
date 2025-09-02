@@ -407,7 +407,7 @@ class AIEnhancedJobParser:
                     (raw_data->>'date_posted')::date >= CURRENT_DATE - INTERVAL '14 days' OR
                     ((raw_data->>'date_posted') IS NULL AND scraped_at >= CURRENT_DATE - INTERVAL '14 days')
                 )
-                AND processed = false
+                AND (processed = false OR processed IS NULL)
                 ORDER BY
                     COALESCE((raw_data->>'date_posted')::date, scraped_at::date) DESC,
                     scraped_at DESC
