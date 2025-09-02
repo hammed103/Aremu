@@ -173,6 +173,9 @@ class IntelligentJobMatcher:
                     ai_remote_allowed as is_remote,
                     posted_date,
 
+                    -- Contact Information (CRITICAL for CTA buttons)
+                    email, ai_email, whatsapp_number, ai_whatsapp_number,
+
                     -- AI Enhanced Fields for Better Matching
                     ai_job_titles,  -- Full array of job title variations
                     ai_job_function,  -- Sales, Engineering, Marketing, etc.
@@ -278,6 +281,10 @@ class IntelligentJobMatcher:
         # 9. EXPERIENCE LEVEL MATCHING (5 points) - Keep existing
         exp_score = self._score_experience_match(user_prefs, job)
         total_score += exp_score
+
+        # 10. CONTACT INFORMATION BONUS (10 points) - NEW: Prioritize jobs with contact info
+        contact_score = self._score_contact_availability(job)
+        total_score += contact_score
 
         return min(total_score, 100.0)  # Cap at 100%
 
@@ -658,6 +665,39 @@ class IntelligentJobMatcher:
             score += 2.0
 
         return score
+
+    def _score_contact_availability(self, job: Dict) -> float:
+        """Score jobs based on availability of contact information for CTA buttons"""
+        score = 0.0
+
+        # Check for job URL (highest priority for apply buttons)
+        job_url = job.get("job_url")
+        if job_url and job_url.strip():
+            score += 6.0  # 6 points for job URL
+
+        # Check for email contact
+        email = job.get("email") or job.get("ai_email")
+        if email and email.strip():
+            score += 3.0  # 3 points for email
+
+        # Check for WhatsApp contact (highest value for user engagement)
+        whatsapp = job.get("whatsapp_number") or job.get("ai_whatsapp_number")
+        if whatsapp and whatsapp.strip():
+            score += 4.0  # 4 points for WhatsApp
+
+        # Bonus for multiple contact methods
+        contact_methods = sum(
+            [
+                1 if job_url and job_url.strip() else 0,
+                1 if email and email.strip() else 0,
+                1 if whatsapp and whatsapp.strip() else 0,
+            ]
+        )
+
+        if contact_methods >= 2:
+            score += 2.0  # 2 bonus points for multiple contact methods
+
+        return min(score, 10.0)  # Cap at 10 points
 
     def _score_experience_match(self, user_prefs: Dict, job: Dict) -> float:
         """Score experience level matching"""

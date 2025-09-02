@@ -203,7 +203,7 @@ class JobService:
             # Format jobs using ai_summary - one message per job
             job_messages = []
 
-            # First message: Introduction for more jobs
+            # First message: Introduction for more jobs (different from initial search)
             intro_msg = f"Here are {len(jobs_to_show)} more job(s) for you ⬇️:"
             job_messages.append(intro_msg)
 
