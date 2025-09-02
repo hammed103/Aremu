@@ -68,14 +68,14 @@ class SmartDeliveryEngine:
         self.job_tracker = JobTrackingSystem()
         self.window_manager = WindowManagementSystem()
 
-        # WhatsApp configuration
-        self.whatsapp_token = whatsapp_token
-        self.whatsapp_phone_id = whatsapp_phone_id
+        # WhatsApp configuration - load from environment if not provided
+        self.whatsapp_token = whatsapp_token or self._load_whatsapp_token()
+        self.whatsapp_phone_id = whatsapp_phone_id or self._load_whatsapp_phone_id()
         self.whatsapp_api_url = None
 
-        if whatsapp_token and whatsapp_phone_id:
+        if self.whatsapp_token and self.whatsapp_phone_id:
             self.whatsapp_api_url = (
-                f"https://graph.facebook.com/v18.0/{whatsapp_phone_id}/messages"
+                f"https://graph.facebook.com/v18.0/{self.whatsapp_phone_id}/messages"
             )
 
         # Delivery settings
@@ -84,6 +84,34 @@ class SmartDeliveryEngine:
         self.max_alerts_per_batch = 50  # Prevent spam during large scraping
 
         logger.info("🚀 Smart Delivery Engine initialized")
+
+    def _load_whatsapp_token(self):
+        """Load WhatsApp access token from environment"""
+        try:
+            env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+            if os.path.exists(env_path):
+                with open(env_path, "r") as f:
+                    for line in f:
+                        if line.startswith("WHATSAPP_ACCESS_TOKEN="):
+                            return line.split("=", 1)[1].strip()
+            return os.getenv("WHATSAPP_ACCESS_TOKEN")
+        except Exception as e:
+            logger.error(f"Error loading WhatsApp token: {e}")
+            return None
+
+    def _load_whatsapp_phone_id(self):
+        """Load WhatsApp phone number ID from environment"""
+        try:
+            env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+            if os.path.exists(env_path):
+                with open(env_path, "r") as f:
+                    for line in f:
+                        if line.startswith("WHATSAPP_PHONE_NUMBER_ID="):
+                            return line.split("=", 1)[1].strip()
+            return os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+        except Exception as e:
+            logger.error(f"Error loading WhatsApp phone ID: {e}")
+            return None
 
     def get_eligible_users_for_delivery(self) -> List[Dict]:
         """Get users eligible for job delivery (active window + confirmed preferences)"""
@@ -264,56 +292,93 @@ class SmartDeliveryEngine:
                     currency = job.get("salary_currency", "NGN")
                     alert_msg += f"💰 {job['salary_min']:,} {currency}+\n"
 
-            # Send WhatsApp message with apply button if job URL exists
-            headers = {
-                "Authorization": f"Bearer {self.whatsapp_token}",
-                "Content-Type": "application/json",
-            }
-
-            job_url = job.get("job_url")
-            if job_url:
-                # Get smart apply button text based on context
-                button_text = apply_button_designer.get_apply_button_text(
-                    job_url, job.get("company"), job.get("title")
+            # Use WhatsApp service for smart CTA button handling
+            try:
+                # Import WhatsApp service for advanced button functionality
+                whatsapp_service_path = os.path.join(
+                    os.path.dirname(__file__), "..", "services"
                 )
-                # Send with CTA URL button that opens website directly
-                payload = {
-                    "messaging_product": "whatsapp",
-                    "to": phone_number,
-                    "type": "interactive",
-                    "interactive": {
-                        "type": "cta_url",
-                        "body": {"text": alert_msg},
-                        "action": {
-                            "name": "cta_url",
-                            "parameters": {
-                                "display_text": button_text,
-                                "url": job_url,
+                sys.path.append(whatsapp_service_path)
+                from whatsapp_service import WhatsAppService
+
+                # Create WhatsApp service instance
+                whatsapp_service = WhatsAppService()
+
+                # Send job with smart CTA buttons (dual buttons if both URL and WhatsApp available)
+                success = whatsapp_service.send_job_with_apply_button(
+                    phone_number,
+                    alert_msg,
+                    job.get("job_url"),
+                    job.get("company"),
+                    job.get("title"),
+                    job.get("whatsapp_number") or job.get("ai_whatsapp_number"),
+                    job.get("email") or job.get("ai_email"),
+                )
+
+                if success:
+                    logger.info(
+                        f"🚨 Sent smart CTA alert to {phone_number} for job {job.get('id')}"
+                    )
+                    return True
+                else:
+                    logger.error(f"❌ Failed to send smart CTA alert")
+                    return False
+
+            except Exception as import_error:
+                logger.warning(
+                    f"⚠️ WhatsApp service not available, using fallback: {import_error}"
+                )
+
+                # Fallback to basic implementation
+                headers = {
+                    "Authorization": f"Bearer {self.whatsapp_token}",
+                    "Content-Type": "application/json",
+                }
+
+                job_url = job.get("job_url")
+                if job_url:
+                    # Get smart apply button text based on context
+                    button_text = apply_button_designer.get_apply_button_text(
+                        job_url, job.get("company"), job.get("title")
+                    )
+                    # Send with CTA URL button that opens website directly
+                    payload = {
+                        "messaging_product": "whatsapp",
+                        "to": phone_number,
+                        "type": "interactive",
+                        "interactive": {
+                            "type": "cta_url",
+                            "body": {"text": alert_msg},
+                            "action": {
+                                "name": "cta_url",
+                                "parameters": {
+                                    "display_text": button_text,
+                                    "url": job_url,
+                                },
                             },
                         },
-                    },
-                }
-            else:
-                # Send as regular text message if no job URL
-                payload = {
-                    "messaging_product": "whatsapp",
-                    "to": phone_number,
-                    "type": "text",
-                    "text": {"body": alert_msg},
-                }
+                    }
+                else:
+                    # Send as regular text message if no job URL
+                    payload = {
+                        "messaging_product": "whatsapp",
+                        "to": phone_number,
+                        "type": "text",
+                        "text": {"body": alert_msg},
+                    }
 
-            response = requests.post(
-                self.whatsapp_api_url, headers=headers, json=payload
-            )
-
-            if response.status_code == 200:
-                logger.info(
-                    f"🚨 Sent real-time alert to {phone_number} for job {job.get('id')}"
+                response = requests.post(
+                    self.whatsapp_api_url, headers=headers, json=payload
                 )
-                return True
-            else:
-                logger.error(f"❌ Failed to send alert: {response.text}")
-                return False
+
+                if response.status_code == 200:
+                    logger.info(
+                        f"🚨 Sent fallback alert to {phone_number} for job {job.get('id')}"
+                    )
+                    return True
+                else:
+                    logger.error(f"❌ Failed to send fallback alert: {response.text}")
+                    return False
 
         except Exception as e:
             logger.error(f"❌ Error sending WhatsApp alert: {e}")
