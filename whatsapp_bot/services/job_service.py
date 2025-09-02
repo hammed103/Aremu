@@ -180,15 +180,13 @@ class JobService:
                 user_id = self.db.get_or_create_user(temp_phone, "Search User")
 
             # Get jobs using intelligent matcher
-            jobs = self.intelligent_matcher.find_matching_jobs(
-                user_preferences, limit=15
-            )
+            jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=15)
 
             if not jobs:
                 return ["No jobs found matching your preferences at the moment."]
 
             # Get jobs that have already been shown to this user
-            shown_job_ids = self._get_shown_jobs(user_id)
+            shown_job_ids = self._get_shown_job_ids(user_id)
 
             # Filter out already shown jobs
             unseen_jobs = [job for job in jobs if job.get("id") not in shown_job_ids]

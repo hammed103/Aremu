@@ -220,8 +220,8 @@ class WhatsAppService:
                     phone_number, job_summary, email, company, job_title
                 )
 
-            # If no job URL, send as regular text message
-            if not job_url:
+            # If no job URL and no contact info, send as regular text message
+            if not job_url and not email and not whatsapp_number:
                 return self.send_message(phone_number, job_summary)
 
             # Get smart apply button text based on context
