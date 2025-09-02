@@ -159,6 +159,101 @@ class JobService:
                 "🔍 I'm searching for jobs that match your preferences. Please try again in a moment."
             ]
 
+    def get_more_jobs(
+        self,
+        user_preferences: Dict,
+        user_name: Optional[str] = None,
+        user_id: Optional[int] = None,
+    ) -> List[str]:
+        """Get the next batch of jobs (jobs 6-10) - for 'More Jobs' button"""
+        try:
+            job_roles = user_preferences.get("job_roles", [])
+
+            if not job_roles:
+                return [
+                    "I need to know what type of job you're looking for. Please type 'menu' and select 'Change Preferences' to add your job title."
+                ]
+
+            # Use the provided user ID or create a temporary one
+            if not user_id:
+                temp_phone = "+temp_search_user"
+                user_id = self.db.get_or_create_user(temp_phone, "Search User")
+
+            # Get jobs using intelligent matcher
+            jobs = self.job_matcher.find_matching_jobs(user_preferences, limit=15)
+
+            if not jobs:
+                return ["No jobs found matching your preferences at the moment."]
+
+            # Get jobs that have already been shown to this user
+            shown_job_ids = self._get_shown_jobs(user_id)
+
+            # Filter out already shown jobs
+            unseen_jobs = [job for job in jobs if job.get("id") not in shown_job_ids]
+
+            if not unseen_jobs:
+                return [
+                    "You're all caught up! No new jobs so far. You'll get new job alerts as soon as they become available."
+                ]
+
+            # Show next batch (up to 5 more jobs)
+            jobs_to_show = unseen_jobs[:5]
+            remaining_jobs = len(unseen_jobs) - len(jobs_to_show)
+
+            # Format jobs using ai_summary - one message per job
+            job_messages = []
+
+            # First message: Introduction for more jobs
+            intro_msg = f"Here are {len(jobs_to_show)} more job(s) for you ⬇️:"
+            job_messages.append(intro_msg)
+
+            # Individual job messages with CTA buttons
+            for i, job in enumerate(jobs_to_show, 1):
+                # Create job message object with summary and URL for button handling
+                job_data = {
+                    "type": "job_with_button",
+                    "summary": self._format_single_job_with_ai_summary(job, i),
+                    "job_url": job.get("job_url"),
+                    "job_id": job.get("id"),
+                    "company": job.get("company"),
+                    "job_title": job.get("title"),
+                    "whatsapp_number": job.get("whatsapp_number")
+                    or job.get("ai_whatsapp_number"),
+                    "email": job.get("email") or job.get("ai_email"),
+                }
+                job_messages.append(job_data)
+
+            # Add follow-up message with interactive buttons
+            if remaining_jobs > 0:
+                follow_up_message = (
+                    f"💬 Want to see even more? ({remaining_jobs} more available)"
+                )
+                more_button_title = f"🔍 More Jobs ({remaining_jobs})"
+            else:
+                follow_up_message = "💬 Want to see more opportunities?"
+                more_button_title = "🔍 More Jobs"
+
+            follow_up_data = {
+                "type": "follow_up_buttons",
+                "message": follow_up_message,
+                "buttons": [
+                    {"id": "more_jobs", "title": more_button_title},
+                    {"id": "menu", "title": "📋 Main Menu"},
+                ],
+            }
+            job_messages.append(follow_up_data)
+
+            # Track that these jobs have been shown to the user
+            self._save_shown_jobs(
+                user_id, [job.get("id") for job in jobs_to_show if job.get("id")]
+            )
+
+            return job_messages
+
+        except Exception as e:
+            logger.error(f"Error getting more jobs: {e}")
+            return ["Sorry, I couldn't retrieve more jobs at the moment."]
+
     def _get_salary_range(self, experience: int, salary_min: int) -> tuple:
         """Determine experience level and salary ranges"""
         if experience <= 1:

@@ -187,8 +187,8 @@ class InteractiveHandler:
             # Handle follow-up job search buttons
             elif button_id == "more_jobs":
                 user_prefs = self.pref_manager.get_preferences(user_id)
-                # Let the job search handler do its own meaningful preferences check
-                return self.job_search_handler.handle_job_search(
+                # Use the special get_more_jobs method for pagination
+                return self.job_search_handler.handle_more_jobs(
                     user_prefs, user_id, phone_number
                 )
 

@@ -119,6 +119,94 @@ class JobSearchHandler:
         else:
             return "No jobs available at the moment."
 
+    def handle_more_jobs(
+        self, user_prefs: dict, user_id: int, phone_number: str
+    ) -> str:
+        """Handle 'More Jobs' button click - shows next batch of jobs with CTA buttons"""
+        try:
+            # Check if user has meaningful preferences
+            if not self._has_meaningful_preferences(user_prefs):
+                return "Please set your preferences first. Type 'menu' and select 'Change Preferences'."
+
+            # Get user's name for personalized response
+            cursor = self.db.connection.cursor()
+            cursor.execute("SELECT name FROM users WHERE id = %s", (user_id,))
+            user_name_result = cursor.fetchone()
+            user_name = (
+                user_name_result[0].split()[0]
+                if user_name_result and user_name_result[0]
+                else None
+            )
+
+            # Get MORE job messages using the job service
+            job_messages = self.job_service.get_more_jobs(
+                user_prefs, user_name, user_id
+            )
+
+            # Send all job messages sequentially with CTA buttons
+            if job_messages:
+                # Send first message (introduction)
+                first_message = job_messages[0]
+
+                # Send remaining messages (individual jobs) with small delays
+                if len(job_messages) > 1:
+
+                    def send_delayed_messages():
+                        for message in job_messages[1:]:
+                            time.sleep(1)  # Small delay between messages
+
+                            # Handle different message types
+                            if (
+                                isinstance(message, dict)
+                                and message.get("type") == "job_with_button"
+                            ):
+                                # Send job with apply button including company and title
+                                self.whatsapp_service.send_job_with_apply_button(
+                                    phone_number,
+                                    message["summary"],
+                                    message.get("job_url"),
+                                    message.get("company"),
+                                    message.get("job_title"),
+                                    message.get("whatsapp_number"),
+                                    message.get("email"),
+                                )
+                            elif (
+                                isinstance(message, dict)
+                                and message.get("type") == "follow_up_buttons"
+                            ):
+                                # Send follow-up message with interactive buttons
+                                formatted_buttons = [
+                                    {
+                                        "type": "reply",
+                                        "reply": {
+                                            "id": btn["id"],
+                                            "title": btn["title"],
+                                        },
+                                    }
+                                    for btn in message["buttons"]
+                                ]
+                                self.whatsapp_service.send_button_menu(
+                                    phone_number, message["message"], formatted_buttons
+                                )
+                            else:
+                                # Send regular text message
+                                self.whatsapp_service.send_message(
+                                    phone_number, message
+                                )
+
+                    # Send additional messages in background thread
+                    thread = threading.Thread(target=send_delayed_messages)
+                    thread.daemon = True
+                    thread.start()
+
+                return first_message
+            else:
+                return "No more jobs available at the moment."
+
+        except Exception as e:
+            logger.error(f"Error handling more jobs: {e}")
+            return "Sorry, I couldn't retrieve more jobs at the moment."
+
     def handle_normal_conversation(
         self, user_message: str, user_prefs: dict, user_id: int
     ) -> str:
