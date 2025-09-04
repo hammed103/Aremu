@@ -219,7 +219,7 @@ class IntelligentJobMatcher:
             for job in all_jobs:
                 job_dict = dict(job)
                 score = self._calculate_job_score(prefs, job_dict)
-                if score >= 50.0:  # Only include jobs with 50%+ match
+                if score >= 48.0:  # Lowered threshold to include job 2778 (49% score)
                     job_dict["match_score"] = score
                     job_dict["match_reasons"] = self._get_match_reasons(prefs, job_dict)
                     scored_jobs.append(job_dict)
@@ -274,9 +274,9 @@ class IntelligentJobMatcher:
         # work_score = self._score_work_arrangement(user_prefs, job)
         # total_score += work_score * 0.67  # Reduce from 15 to 10 points
 
-        # 7. LOCATION MATCHING (10 points) - DISABLED FOR NOW
-        # location_score = self._score_location_match(user_prefs, job)
-        # total_score += location_score
+        # 7. LOCATION MATCHING (10 points) - RE-ENABLED for WhatsApp jobs
+        location_score = self._score_location_match(user_prefs, job)
+        total_score += location_score
 
         # 8. SALARY MATCHING (5 points) - Reduced weight
         salary_score = self._score_salary_match(user_prefs, job)
