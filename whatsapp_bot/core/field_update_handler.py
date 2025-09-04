@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 class FieldUpdateHandler:
     """Handles individual preference field updates"""
 
-    def __init__(self, db, pref_manager):
+    def __init__(self, db, pref_manager, preference_parser=None):
         """Initialize field update handler with required dependencies"""
         self.db = db
         self.pref_manager = pref_manager
+        self.preference_parser = preference_parser
 
     def is_updating_preference_field(self, user_id: int) -> bool:
         """Check if user is in the middle of updating a preference field"""
@@ -156,7 +157,7 @@ class FieldUpdateHandler:
             return "Failed to update name. Please try again."
 
     def update_job_title_field(self, user_message: str, user_id: int) -> str:
-        """Update the user's job title preferences"""
+        """Update the user's job title preferences with AI expansion"""
         try:
             # Parse job titles from message
             job_titles = [title.strip() for title in user_message.split(",")]
@@ -166,13 +167,44 @@ class FieldUpdateHandler:
                 return "Please enter at least one job title."
 
             preferences = {"job_roles": job_titles}
+
+            # Apply AI expansion if preference parser is available
+            if self.preference_parser:
+                try:
+                    expanded_preferences = (
+                        self.preference_parser.expand_job_categories_with_ai(
+                            preferences
+                        )
+                    )
+                    if expanded_preferences:
+                        preferences.update(expanded_preferences)
+                        logger.info(
+                            f"🚀 AI expanded job preferences for user {user_id}: {expanded_preferences}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ AI expansion failed, using original preferences: {e}"
+                    )
+
             success = self.pref_manager.save_preferences(user_id, preferences)
 
             if success:
                 self.clear_updating_field(user_id)
+
+                # Create response message showing expansion
+                final_roles = preferences.get("job_roles", job_titles)
+                categories = preferences.get("job_categories", [])
+
+                message = f"✅ Job titles updated to: {', '.join(final_roles[:3])}"
+                if len(final_roles) > 3:
+                    message += f" and {len(final_roles) - 3} more"
+
+                if categories:
+                    message += f"\n🎯 Job categories: {', '.join(categories)}"
+
                 return {
                     "type": "field_updated",
-                    "message": f"✅ Job titles updated to: {', '.join(job_titles)}",
+                    "message": message,
                     "user_id": user_id,
                 }
             else:
@@ -183,7 +215,7 @@ class FieldUpdateHandler:
             return "Failed to update job titles. Please try again."
 
     def update_location_field(self, user_message: str, user_id: int) -> str:
-        """Update the user's location preferences"""
+        """Update the user's location preferences with AI standardization"""
         try:
             locations = [loc.strip() for loc in user_message.split(",")]
             locations = [loc for loc in locations if loc]  # Remove empty
@@ -192,13 +224,40 @@ class FieldUpdateHandler:
                 return "Please enter at least one location."
 
             preferences = {"preferred_locations": locations}
+
+            # Apply AI standardization if preference parser is available
+            if self.preference_parser:
+                try:
+                    standardized_preferences = (
+                        self.preference_parser.standardize_locations_with_ai(
+                            preferences
+                        )
+                    )
+                    if standardized_preferences:
+                        preferences.update(standardized_preferences)
+                        logger.info(
+                            f"📍 AI standardized locations for user {user_id}: {standardized_preferences}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ Location standardization failed, using original: {e}"
+                    )
+
             success = self.pref_manager.save_preferences(user_id, preferences)
 
             if success:
                 self.clear_updating_field(user_id)
+
+                # Create response message showing standardization
+                final_locations = preferences.get("preferred_locations", locations)
+
+                message = f"✅ Locations updated to: {', '.join(final_locations[:3])}"
+                if len(final_locations) > 3:
+                    message += f" and {len(final_locations) - 3} more"
+
                 return {
                     "type": "field_updated",
-                    "message": f"✅ Locations updated to: {', '.join(locations)}",
+                    "message": message,
                     "user_id": user_id,
                 }
             else:

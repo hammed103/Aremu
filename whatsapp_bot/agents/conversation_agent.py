@@ -422,6 +422,21 @@ JSON:"""
                 end = result.rfind("}") + 1
                 json_str = result[start:end]
                 preferences = json.loads(json_str)
+
+                # Apply AI expansion to job roles if present
+                if preferences.get("job_roles"):
+                    expanded_preferences = self.expand_job_categories_with_ai(
+                        preferences
+                    )
+                    preferences.update(expanded_preferences)
+
+                # Apply AI standardization to locations if present
+                if preferences.get("preferred_locations"):
+                    standardized_preferences = self.standardize_locations_with_ai(
+                        preferences
+                    )
+                    preferences.update(standardized_preferences)
+
                 logger.info(f"🤖 LLM parsed preferences: {preferences}")
                 return preferences
             else:
@@ -430,4 +445,163 @@ JSON:"""
 
         except Exception as e:
             logger.error(f"❌ Error parsing preferences with LLM: {e}")
+            return {}
+
+    def expand_job_categories_with_ai(self, preferences: Dict) -> Dict:
+        """Use AI to expand job categories when user sets job preferences"""
+        try:
+            job_roles = preferences.get("job_roles", [])
+            if not job_roles:
+                return {}
+
+            # Create AI prompt for job category expansion
+            expansion_prompt = f"""You are an expert job market analyst. A user mentioned these job interests: {', '.join(job_roles)}
+
+Based on their input, generate 5 standardized job categories and related roles that fit their interests. This will help them discover more relevant job opportunities.
+
+Return ONLY a JSON object with these fields:
+
+{{
+  "expanded_job_roles": ["5 standardized job titles that match their interests"],
+  "job_categories": ["3-5 industry categories that fit these roles"]
+}}
+
+EXAMPLES:
+- If user says "sales" → expanded_job_roles: ["Sales Representative", "Business Development Manager", "Account Manager", "Sales Executive", "Customer Success Manager"]
+- If user says "developer" → expanded_job_roles: ["Software Developer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "Mobile Developer"]
+- If user says "marketing" → expanded_job_roles: ["Digital Marketing Specialist", "Marketing Manager", "Content Marketing Manager", "Social Media Manager", "Marketing Coordinator"]
+
+RULES:
+- Generate exactly 5 standardized job roles
+- Include 3-5 relevant industry categories
+- Focus on Nigerian job market context
+- Make roles specific and searchable
+- Return valid JSON only
+
+JSON:"""
+
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4.1-nano",
+                messages=[{"role": "user", "content": expansion_prompt}],
+                max_tokens=400,
+                temperature=0.3,
+            )
+
+            result = response.choices[0].message.content.strip()
+
+            # Parse JSON response
+            import json
+
+            if "{" in result and "}" in result:
+                start = result.find("{")
+                end = result.rfind("}") + 1
+                json_str = result[start:end]
+                expanded_data = json.loads(json_str)
+
+                # Combine original and expanded job roles (remove duplicates)
+                original_roles = set(role.lower() for role in job_roles)
+                expanded_roles = expanded_data.get("expanded_job_roles", [])
+
+                # Add expanded roles that aren't already present
+                final_roles = job_roles.copy()
+                for role in expanded_roles:
+                    if role.lower() not in original_roles:
+                        final_roles.append(role)
+
+                logger.info(
+                    f"🚀 AI expanded job roles from {len(job_roles)} to {len(final_roles)}"
+                )
+                logger.info(
+                    f"🎯 Added job categories: {expanded_data.get('job_categories', [])}"
+                )
+
+                return {
+                    "job_roles": final_roles,
+                    "job_categories": expanded_data.get("job_categories", []),
+                }
+            else:
+                logger.error(f"❌ No JSON in AI expansion response: {result}")
+                return {}
+
+        except Exception as e:
+            logger.error(f"❌ Error expanding job categories with AI: {e}")
+            return {}
+
+    def standardize_locations_with_ai(self, preferences: Dict) -> Dict:
+        """Use AI to standardize location preferences for better matching"""
+        try:
+            locations = preferences.get("preferred_locations", [])
+            if not locations:
+                return {}
+
+            # Create AI prompt for location standardization
+            standardization_prompt = f"""You are an expert on Nigerian geography and job markets. A user mentioned these location preferences: {', '.join(locations)}
+
+Standardize these locations for better job matching. Focus on:
+1. Correcting spelling and formatting
+2. Using standard city/state names
+3. Handling common abbreviations
+4. Adding relevant nearby areas if appropriate
+5. Keeping "Remote" as-is if mentioned
+
+Return ONLY a JSON object with this field:
+
+{{
+  "standardized_locations": ["list of 3-5 standardized location names"]
+}}
+
+EXAMPLES:
+- Input: ["lagos", "abj"] → Output: ["Lagos", "Abuja"]
+- Input: ["portharcourt", "warri"] → Output: ["Port Harcourt", "Warri", "Rivers State", "Delta State"]
+- Input: ["remote", "lagos"] → Output: ["Remote", "Lagos", "Lagos State"]
+- Input: ["kano"] → Output: ["Kano", "Kano State", "Northern Nigeria"]
+
+RULES:
+- Use proper capitalization (Lagos, not lagos)
+- Include state names for major cities
+- Keep "Remote", "Hybrid" as-is
+- Add regional context for smaller cities
+- Maximum 5 locations
+- Focus on Nigerian locations
+- Return valid JSON only
+
+JSON:"""
+
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4.1-nano",
+                messages=[{"role": "user", "content": standardization_prompt}],
+                max_tokens=300,
+                temperature=0.1,
+            )
+
+            result = response.choices[0].message.content.strip()
+
+            # Parse JSON response
+            import json
+
+            if "{" in result and "}" in result:
+                start = result.find("{")
+                end = result.rfind("}") + 1
+                json_str = result[start:end]
+                standardized_data = json.loads(json_str)
+
+                standardized_locations = standardized_data.get(
+                    "standardized_locations", []
+                )
+
+                if standardized_locations:
+                    logger.info(
+                        f"📍 AI standardized locations from {locations} to {standardized_locations}"
+                    )
+
+                    return {"preferred_locations": standardized_locations}
+                else:
+                    logger.warning("⚠️ No standardized locations returned")
+                    return {}
+            else:
+                logger.error(f"❌ No JSON in AI standardization response: {result}")
+                return {}
+
+        except Exception as e:
+            logger.error(f"❌ Error standardizing locations with AI: {e}")
             return {}

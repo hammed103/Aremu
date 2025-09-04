@@ -61,7 +61,9 @@ class BotController:
             self.window_manager,
         )
 
-        self.field_update_handler = FieldUpdateHandler(self.db, self.pref_manager)
+        self.field_update_handler = FieldUpdateHandler(
+            self.db, self.pref_manager, self.preference_parser
+        )
 
         self.guided_setup_handler = GuidedSetupHandler(
             self.db, self.pref_manager, self.window_manager
