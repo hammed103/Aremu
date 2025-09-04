@@ -504,12 +504,15 @@ class AIEnhancedJobParser:
             text = raw_data.get("text", "")
             email = self.extract_email_from_text(text)
             whatsapp = self.extract_whatsapp_from_text(text)
+            job_url = self.extract_url_from_text(
+                text
+            )  # NEW: Extract URLs for CTA buttons
 
             return {
                 "title": self.extract_title_from_whatsapp_text(text),
                 "company": None,  # Will be extracted by AI
                 "location": None,  # Will be extracted by AI
-                "job_url": None,
+                "job_url": job_url,  # Now extracts URLs from WhatsApp text
                 "description": text,
                 "employment_type": None,  # Will be extracted by AI
                 "salary_min": None,
@@ -613,6 +616,59 @@ class AIEnhancedJobParser:
             if matches:
                 return matches[0]
         return None
+
+    def extract_url_from_text(self, text: str) -> Optional[str]:
+        """Extract URLs from WhatsApp job text for CTA buttons"""
+        import re
+
+        if not text:
+            return None
+
+        # URL patterns to match various formats
+        url_patterns = [
+            # Standard HTTP/HTTPS URLs
+            r'https?://[^\s<>"{}|\\^`\[\]]+',
+            # URLs without protocol
+            r'www\.[^\s<>"{}|\\^`\[\]]+',
+            # Common job board domains without www
+            r'\b(?:linkedin\.com|indeed\.com|glassdoor\.com|jobberman\.com|myjobmag\.com|careers\.[\w-]+\.com)[^\s<>"{}|\\^`\[\]]*',
+            # Application links
+            r'\b[\w-]+\.com/(?:jobs|careers|apply)[^\s<>"{}|\\^`\[\]]*',
+        ]
+
+        for pattern in url_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                url = matches[0]
+                # Clean up the URL
+                url = url.rstrip(".,!?;)")  # Remove trailing punctuation
+
+                # Add protocol if missing
+                if not url.startswith(("http://", "https://")):
+                    url = "https://" + url
+
+                # Validate URL format
+                if self._is_valid_url(url):
+                    return url
+
+        return None
+
+    def _is_valid_url(self, url: str) -> bool:
+        """Validate if extracted URL is properly formatted"""
+        import re
+
+        # Basic URL validation
+        url_regex = re.compile(
+            r"^https?://"  # http:// or https://
+            r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain...
+            r"localhost|"  # localhost...
+            r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+            r"(?::\d+)?"  # optional port
+            r"(?:/?|[/?]\S+)$",
+            re.IGNORECASE,
+        )
+
+        return url_regex.match(url) is not None
 
     def save_canonical_job(self, job: Dict[str, Any]):
         """Save canonical job to database and return job ID"""
