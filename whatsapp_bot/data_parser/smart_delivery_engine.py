@@ -120,7 +120,7 @@ class SmartDeliveryEngine:
 
             cursor.execute(
                 """
-                SELECT DISTINCT 
+                SELECT DISTINCT
                     u.id,
                     u.phone_number,
                     u.name,
@@ -139,8 +139,7 @@ class SmartDeliveryEngine:
                 JOIN conversation_windows cw ON u.id = cw.user_id
                 WHERE up.preferences_confirmed = TRUE
                 AND cw.window_status = 'active'
-                AND cw.last_activity >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
-                AND EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - cw.window_start))/3600 < 24
+                AND cw.last_activity >= CURRENT_TIMESTAMP - INTERVAL '7 days'
             """
             )
 
