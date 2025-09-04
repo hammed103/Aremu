@@ -57,7 +57,7 @@ class JobService:
             )
 
             # Use intelligent matcher for AI-powered job matching
-            all_jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=20)
+            all_jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=100)
             logger.info(
                 f"🔍 DEBUG - Found {len(all_jobs)} total jobs for user {user_id}"
             )
@@ -180,7 +180,7 @@ class JobService:
                 user_id = self.db.get_or_create_user(temp_phone, "Search User")
 
             # Get jobs using intelligent matcher
-            jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=15)
+            jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=100)
 
             if not jobs:
                 return ["No jobs found matching your preferences at the moment."]

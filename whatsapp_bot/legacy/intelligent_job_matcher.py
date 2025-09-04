@@ -143,7 +143,7 @@ class IntelligentJobMatcher:
             "project management": ["pm", "project management", "agile", "scrum"],
         }
 
-    def search_jobs_for_user(self, user_id: int, limit: int = 10) -> List[Dict]:
+    def search_jobs_for_user(self, user_id: int, limit: int = 100) -> List[Dict]:
         """Advanced job search using multiple intelligent matching strategies"""
         try:
             # Get user preferences
