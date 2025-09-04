@@ -166,7 +166,7 @@ class IntelligentJobMatcher:
             cursor.execute(
                 """
                 SELECT
-                    id, title, company, location, description, job_url,
+                    id, title, company, location, description, job_url, source,
                     ai_salary_min as salary_min, ai_salary_max as salary_max,
                     ai_salary_currency as salary_currency,
                     ai_employment_type as employment_type,
@@ -199,9 +199,13 @@ class IntelligentJobMatcher:
                    OR posted_date IS NULL
                 ORDER BY
                     CASE WHEN ai_summary IS NOT NULL THEN 0 ELSE 1 END,
-                    scraped_at DESC NULLS FIRST,  -- Sort by scraped_at (more reliable than posted_date)
+                    -- Balanced sorting to ensure WhatsApp jobs aren't pushed out by more frequent JobSpy scraping
+                    CASE
+                        WHEN source = 'whatsapp' THEN scraped_at + INTERVAL '1 day'  -- Boost WhatsApp jobs
+                        ELSE scraped_at
+                    END DESC NULLS FIRST,
                     id DESC  -- Add deterministic secondary sort
-                LIMIT 900  -- Balanced limit for performance vs coverage
+                LIMIT 2000  -- Increased limit to ensure WhatsApp jobs are included
             """
             )
             all_jobs = cursor.fetchall()
