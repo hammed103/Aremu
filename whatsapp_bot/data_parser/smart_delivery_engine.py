@@ -236,11 +236,19 @@ class SmartDeliveryEngine:
         """Convert user database row to preferences format for intelligent matcher"""
 
         def ensure_list_of_strings(value):
-            """Ensure value is a list of strings"""
+            """Ensure value is a list of strings, handling PostgreSQL array format"""
             if value is None:
                 return []
             if isinstance(value, str):
-                return [value]  # Convert single string to list
+                # Handle PostgreSQL array format: {item1,item2,item3}
+                if value.startswith("{") and value.endswith("}"):
+                    # Remove braces and split by comma
+                    items = value[1:-1].split(",")
+                    # Clean up each item (remove quotes and whitespace)
+                    return [item.strip().strip("\"'") for item in items if item.strip()]
+                else:
+                    # Single string value
+                    return [value]
             if isinstance(value, list):
                 # Ensure all items are strings
                 return [str(item) for item in value if item is not None]
@@ -300,8 +308,10 @@ class SmartDeliveryEngine:
                 sys.path.append(whatsapp_service_path)
                 from whatsapp_service import WhatsAppService
 
-                # Create WhatsApp service instance
-                whatsapp_service = WhatsAppService()
+                # Create WhatsApp service instance with credentials
+                whatsapp_service = WhatsAppService(
+                    self.whatsapp_token, self.whatsapp_phone_id
+                )
 
                 # Send job with smart CTA buttons (dual buttons if both URL and WhatsApp available)
                 success = whatsapp_service.send_job_with_apply_button(
