@@ -4,14 +4,14 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
+    "startCommand": "python ai_parser_standalone.py",
+    "restartPolicyType": "NEVER"
   },
   "environments": {
     "production": {
       "variables": {
-        "FLASK_ENV": "production"
+        "PYTHONPATH": "/app",
+        "SERVICE_TYPE": "AI_PARSER_STANDALONE"
       }
     }
   }
