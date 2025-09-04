@@ -1,1 +1,1 @@
-worker: python ai_parser_standalone.py
+worker: python scheduler_service.py
