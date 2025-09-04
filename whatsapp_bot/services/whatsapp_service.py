@@ -184,7 +184,7 @@ class WhatsAppService:
         whatsapp_number: str = None,
         email: str = None,
     ) -> bool:
-        """Send job message with AI summary and CTA URL button that opens website directly"""
+        """Send job message with single CTA URL button (WhatsApp Cloud API limitation)"""
         try:
             logger.info(
                 f"🔘 SEND_JOB_WITH_APPLY_BUTTON: Starting for phone={phone_number}"
@@ -193,99 +193,91 @@ class WhatsAppService:
             logger.info(
                 f"📱 SEND_JOB_WITH_APPLY_BUTTON: whatsapp_number={whatsapp_number}"
             )
-            logger.info(f"🏢 SEND_JOB_WITH_APPLY_BUTTON: company={company}")
-            logger.info(f"💼 SEND_JOB_WITH_APPLY_BUTTON: job_title={job_title}")
-            # Check if we have both job URL and WhatsApp number for dual buttons
-            if job_url and whatsapp_number:
+            logger.info(f"📧 SEND_JOB_WITH_APPLY_BUTTON: email={email}")
+
+            # WhatsApp Cloud API only supports ONE CTA URL button per message
+            # Priority logic for CTA selection:
+            # 1. Job URL (highest priority - main application)
+            # 2. WhatsApp contact (secondary - direct contact)
+            # 3. Email contact (tertiary - traditional contact)
+
+            # For multiple contact methods, we'll include them in the message text
+            # and use the highest priority one as the CTA button
+
+            cta_url = None
+            cta_button_text = None
+            additional_contacts = []
+
+            # Determine primary CTA and collect additional contact methods
+            if job_url:
+                cta_url = job_url
+                cta_button_text = apply_button_designer.get_apply_button_text(
+                    job_url, company, job_title
+                )
+                logger.info(f"🔗 Primary CTA: Job URL")
+
+                # Add secondary contact methods to message text
+                if whatsapp_number:
+                    wa_link = self._format_whatsapp_link(whatsapp_number)
+                    additional_contacts.append(f"📱 WhatsApp: {wa_link}")
+                if email:
+                    additional_contacts.append(f"📧 Email: {email}")
+
+            elif whatsapp_number:
+                cta_url = self._format_whatsapp_link(whatsapp_number)
+                cta_button_text = self._get_whatsapp_button_text(company, job_title)
+                logger.info(f"📱 Primary CTA: WhatsApp")
+
+                # Add email as secondary contact method
+                if email:
+                    additional_contacts.append(f"📧 Email: {email}")
+
+            elif email:
+                cta_url = f"mailto:{email}"
+                cta_button_text = self._get_email_button_text(company, job_title)
+                logger.info(f"📧 Primary CTA: Email")
+
+            else:
+                # No contact methods available - send as regular message
                 logger.info(
-                    f"🔄 SEND_JOB_WITH_APPLY_BUTTON: Using dual buttons (URL + WhatsApp)"
-                )
-                return self.send_job_with_dual_buttons(
-                    phone_number,
-                    job_summary,
-                    job_url,
-                    whatsapp_number,
-                    company,
-                    job_title,
-                )
-
-            # Check if we have both job URL and email for dual buttons (only if no WhatsApp)
-            if job_url and email and not whatsapp_number:
-                logger.info(
-                    f"📧 SEND_JOB_WITH_APPLY_BUTTON: Using dual buttons (URL + Email)"
-                )
-                return self.send_job_with_dual_buttons_email(
-                    phone_number,
-                    job_summary,
-                    job_url,
-                    email,
-                    company,
-                    job_title,
-                )
-
-            # Prioritize WhatsApp over email when both are available (no job URL)
-            if whatsapp_number and not job_url:
-                logger.info(
-                    f"📱 SEND_JOB_WITH_APPLY_BUTTON: Using single WhatsApp button (no URL)"
-                )
-                return self.send_job_with_whatsapp_button(
-                    phone_number, job_summary, whatsapp_number, company, job_title
-                )
-
-            # If only email and no WhatsApp, send with email button
-            if email and not job_url and not whatsapp_number:
-                logger.info(f"📧 SEND_JOB_WITH_APPLY_BUTTON: Using single email button")
-                return self.send_job_with_email_button(
-                    phone_number, job_summary, email, company, job_title
-                )
-
-            # If no job URL and no contact info, send as regular text message
-            if not job_url and not email and not whatsapp_number:
-                logger.warning(
-                    f"⚠️ SEND_JOB_WITH_APPLY_BUTTON: No URL or contact info - sending plain text"
+                    f"❌ No contact methods available - sending as regular message"
                 )
                 return self.send_message(phone_number, job_summary)
 
-            # Get smart apply button text based on context
-            logger.info(
-                f"🔗 SEND_JOB_WITH_APPLY_BUTTON: Using single URL button as fallback"
-            )
-            button_text = apply_button_designer.get_apply_button_text(
-                job_url, company, job_title
-            )
-            logger.info(f"🔘 SEND_JOB_WITH_APPLY_BUTTON: Button text = '{button_text}'")
+            # Enhance job summary with additional contact methods
+            enhanced_summary = job_summary
+            if additional_contacts:
+                enhanced_summary += "\n\n" + "\n".join(additional_contacts)
 
-            # Send as CTA URL message with smart Apply button
+            # Ensure button text fits WhatsApp's 20 character limit
+            cta_button_text = self._ensure_button_text_length(cta_button_text)
+
+            logger.info(f"🔘 CTA Button: '{cta_button_text}' -> {cta_url}")
+
+            # Send as CTA URL message
             payload = {
                 "messaging_product": "whatsapp",
                 "to": phone_number,
                 "type": "interactive",
                 "interactive": {
                     "type": "cta_url",
-                    "body": {"text": job_summary},
+                    "body": {"text": enhanced_summary},
                     "action": {
                         "name": "cta_url",
                         "parameters": {
-                            "display_text": button_text,
-                            "url": job_url,
+                            "display_text": cta_button_text,
+                            "url": cta_url,
                         },
                     },
                 },
             }
-            logger.info(f"📤 SEND_JOB_WITH_APPLY_BUTTON: Sending CTA URL payload")
+            logger.info(f"📤 Sending CTA URL payload")
             return self._send_message(payload)
 
         except Exception as e:
-            logger.error(f"Error sending job with CTA URL button: {e}")
-            # Fallback to regular message with smart formatted URL
-            if job_url:
-                fallback_message = (
-                    f"{job_summary}\n\n"
-                    f"{apply_button_designer.get_fallback_apply_section(job_url, company, job_title)}"
-                )
-            else:
-                fallback_message = job_summary
-            return self.send_message(phone_number, fallback_message)
+            logger.error(f"Error sending job with apply button: {e}")
+            # Fallback to regular message
+            return self.send_message(phone_number, job_summary)
 
     def send_job_with_whatsapp_button(
         self,
@@ -369,72 +361,6 @@ class WhatsAppService:
             logger.error(f"Error sending job with email button: {e}")
             # Fallback to regular message with email
             fallback_message = f"{job_summary}\n\n📧 Email: {email}"
-            return self.send_message(phone_number, fallback_message)
-
-    def send_job_with_dual_buttons(
-        self,
-        phone_number: str,
-        job_summary: str,
-        job_url: str,
-        whatsapp_number: str,
-        company: str = None,
-        job_title: str = None,
-    ) -> bool:
-        """Send job message with both Apply and WhatsApp contact buttons"""
-        try:
-            # Format WhatsApp number for wa.me link
-            wa_link = self._format_whatsapp_link(whatsapp_number)
-
-            # Get apply button text
-            apply_button_text = apply_button_designer.get_apply_button_text(
-                job_url, company, job_title
-            )
-
-            # Create dual buttons (reply buttons for dual CTA)
-            buttons = [
-                {
-                    "type": "reply",
-                    "reply": {
-                        "id": f"apply_{hash(job_url) % 10000}",
-                        "title": apply_button_text[:20],  # WhatsApp limit
-                    },
-                },
-                {
-                    "type": "reply",
-                    "reply": {
-                        "id": f"contact_{hash(whatsapp_number) % 10000}",
-                        "title": self._get_whatsapp_button_text(company, job_title)[
-                            :20
-                        ],
-                    },
-                },
-            ]
-
-            # Send with reply buttons and include URLs in message
-            enhanced_summary = (
-                f"{job_summary}\n\n" f"🔗 Apply: {job_url}\n" f"📱 WhatsApp: {wa_link}"
-            )
-
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": phone_number,
-                "type": "interactive",
-                "interactive": {
-                    "type": "button",
-                    "body": {"text": enhanced_summary},
-                    "action": {"buttons": buttons},
-                },
-            }
-            return self._send_message(payload)
-
-        except Exception as e:
-            logger.error(f"Error sending job with dual buttons: {e}")
-            # Fallback to regular message with both links
-            fallback_message = (
-                f"{job_summary}\n\n"
-                f"🔗 Apply: {job_url}\n"
-                f"📱 WhatsApp: {self._format_whatsapp_link(whatsapp_number)}"
-            )
             return self.send_message(phone_number, fallback_message)
 
     def _format_whatsapp_link(self, whatsapp_number: str) -> str:
@@ -573,70 +499,6 @@ class WhatsAppService:
         except Exception as e:
             logger.error(f"Error generating email button text: {e}")
             return "📧 Email Employer"
-
-    def send_job_with_dual_buttons_email(
-        self,
-        phone_number: str,
-        job_summary: str,
-        job_url: str,
-        email: str,
-        company: str = None,
-        job_title: str = None,
-    ) -> bool:
-        """Send job message with both Apply and Email contact buttons"""
-        try:
-            # Format email for mailto link
-            mailto_link = f"mailto:{email}"
-
-            # Get apply button text
-            apply_button_text = apply_button_designer.get_apply_button_text(
-                job_url, company, job_title
-            )
-
-            # Create dual buttons (reply buttons for dual CTA)
-            buttons = [
-                {
-                    "type": "reply",
-                    "reply": {
-                        "id": f"apply_{hash(job_url) % 10000}",
-                        "title": apply_button_text[:20],  # WhatsApp limit
-                    },
-                },
-                {
-                    "type": "reply",
-                    "reply": {
-                        "id": f"email_{hash(email) % 10000}",
-                        "title": self._get_email_button_text(company, job_title)[:20],
-                    },
-                },
-            ]
-
-            # Send with reply buttons and include URLs in message
-            enhanced_summary = (
-                f"{job_summary}\n\n" f"🔗 Apply: {job_url}\n" f"📧 Email: {mailto_link}"
-            )
-
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": phone_number,
-                "type": "interactive",
-                "interactive": {
-                    "type": "button",
-                    "body": {"text": enhanced_summary},
-                    "action": {"buttons": buttons},
-                },
-            }
-            return self._send_message(payload)
-
-        except Exception as e:
-            logger.error(f"Error sending job with dual buttons (email): {e}")
-            # Fallback to regular message with both links
-            fallback_message = (
-                f"{job_summary}\n\n"
-                f"🔗 Apply: {job_url}\n"
-                f"📧 Email: mailto:{email}"
-            )
-            return self.send_message(phone_number, fallback_message)
 
     def _send_message(self, payload: dict) -> bool:
         """Helper method to send a message with the given payload"""
