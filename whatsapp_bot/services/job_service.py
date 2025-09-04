@@ -12,7 +12,7 @@ import os
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from legacy.database_manager import DatabaseManager
+from legacy.database_manager import DatabaseManager as LegacyDatabaseManager
 from legacy.intelligent_job_matcher import IntelligentJobMatcher
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class JobService:
 
     def __init__(self):
         """Initialize the job service with database connection and intelligent matcher"""
-        self.db = DatabaseManager()
+        self.db = LegacyDatabaseManager()
         self.db.connect()
         self.intelligent_matcher = IntelligentJobMatcher(self.db.connection)
         logger.info(
