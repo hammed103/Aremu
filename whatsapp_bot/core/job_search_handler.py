@@ -116,7 +116,7 @@ class JobSearchHandler:
                 thread.daemon = True
                 thread.start()
 
-            return first_message
+            return ""  # Messages already sent directly
         else:
             return "No jobs available at the moment."
 
@@ -229,7 +229,7 @@ class JobSearchHandler:
                     thread.daemon = True
                     thread.start()
 
-                return first_message
+                return ""  # Messages already sent directly
             else:
                 return "No more jobs available at the moment."
 
