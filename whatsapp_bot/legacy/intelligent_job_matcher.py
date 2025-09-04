@@ -219,7 +219,7 @@ class IntelligentJobMatcher:
             for job in all_jobs:
                 job_dict = dict(job)
                 score = self._calculate_job_score(prefs, job_dict)
-                if score >= 48.0:  # Lowered threshold to include job 2778 (49% score)
+                if score >= 50.0:  # Only include jobs with 50%+ match
                     job_dict["match_score"] = score
                     job_dict["match_reasons"] = self._get_match_reasons(prefs, job_dict)
                     scored_jobs.append(job_dict)
