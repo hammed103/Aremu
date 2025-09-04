@@ -300,7 +300,8 @@ class SmartDeliveryEngine:
                     alert_msg += f"💰 {job['salary_min']:,} {currency}+\n"
 
             # Ensure message doesn't exceed WhatsApp's 1024 character limit
-            max_length = 1000  # Leave some buffer for safety
+            # Be more conservative since WhatsApp service may add contact info
+            max_length = 800  # More conservative limit to account for contact info
             if len(alert_msg) > max_length:
                 # Truncate and add ellipsis
                 alert_msg = (
