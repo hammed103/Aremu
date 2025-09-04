@@ -299,6 +299,15 @@ class SmartDeliveryEngine:
                     currency = job.get("salary_currency", "NGN")
                     alert_msg += f"💰 {job['salary_min']:,} {currency}+\n"
 
+            # Ensure message doesn't exceed WhatsApp's 1024 character limit
+            max_length = 1000  # Leave some buffer for safety
+            if len(alert_msg) > max_length:
+                # Truncate and add ellipsis
+                alert_msg = (
+                    alert_msg[: max_length - 10]
+                    + "...\n\n📱 See full details in the job link below."
+                )
+
             # Use WhatsApp service for smart CTA button handling
             try:
                 # Import WhatsApp service for advanced button functionality

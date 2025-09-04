@@ -263,6 +263,12 @@ class WhatsAppService:
             if all_contacts:
                 enhanced_summary += "\n\n" + "\n".join(all_contacts)
 
+            # Ensure message doesn't exceed WhatsApp's 1024 character limit
+            max_length = 1000  # Leave buffer for safety
+            if len(enhanced_summary) > max_length:
+                # Truncate and add ellipsis
+                enhanced_summary = enhanced_summary[:max_length-10] + "...\n\n📱 See full details in the job link."
+
             # Ensure button text fits WhatsApp's 20 character limit
             cta_button_text = self._ensure_button_text_length(cta_button_text)
 
