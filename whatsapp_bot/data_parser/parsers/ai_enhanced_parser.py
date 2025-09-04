@@ -390,6 +390,89 @@ class AIEnhancedJobParser:
 
         return canonical_job
 
+    def extract_whatsapp_basic_data(self, text: str) -> Dict[str, Any]:
+        """Extract basic structured data from WhatsApp job text using AI"""
+        if not self.use_ai or not self.openai_client or not text:
+            return {}
+
+        try:
+            # Specialized AI prompt for WhatsApp basic data extraction
+            prompt = f"""
+            You are an expert at extracting structured job data from WhatsApp job posts.
+            Extract ONLY the basic fields from this WhatsApp job posting.
+
+            WhatsApp Job Text:
+            {text}
+
+            Extract and return ONLY valid JSON with these basic fields:
+
+            {{
+                "title": "Extract the job title/position name",
+                "company": "Extract company name if mentioned",
+                "location": "Extract location/city if mentioned",
+                "job_url": "Extract any job application URL if present",
+                "employment_type": "Full-time, Part-time, Contract, Internship, or Freelance if mentioned",
+                "salary_min": null or number,
+                "salary_max": null or number,
+                "salary_currency": "NGN, USD, or EUR if salary mentioned",
+                "email": "Extract APPLICATION email ONLY. IGNORE support/reporting emails. Return null if no application email found.",
+                "whatsapp_number": "Extract phone/WhatsApp number for applications (ignore support numbers)"
+            }}
+
+            IMPORTANT:
+            - Return null for fields not clearly mentioned in the text
+            - For email: ONLY extract emails meant for job applications, ignore support/reporting emails
+            - For salary: Extract numeric values only if clearly stated
+            - Keep job title concise and professional
+            - Return ONLY valid JSON, no explanations
+            """
+
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,  # Lower temperature for more consistent extraction
+            )
+
+            if (
+                not hasattr(response, "choices")
+                or not response.choices
+                or len(response.choices) == 0
+            ):
+                logger.warning(f"⚠️ No AI response for WhatsApp basic extraction")
+                return {}
+
+            ai_response = response.choices[0].message.content
+            if not ai_response:
+                logger.warning(f"⚠️ Empty AI response for WhatsApp basic extraction")
+                return {}
+
+            ai_response = ai_response.strip()
+
+            # Clean up JSON response
+            if ai_response.startswith("```json"):
+                ai_response = (
+                    ai_response.replace("```json", "").replace("```", "").strip()
+                )
+
+            try:
+                extracted_data = json.loads(ai_response)
+                if isinstance(extracted_data, dict):
+                    logger.debug(f"✅ WhatsApp basic data extracted successfully")
+                    return extracted_data
+                else:
+                    logger.warning(f"⚠️ Invalid WhatsApp extraction format")
+                    return {}
+
+            except json.JSONDecodeError as json_error:
+                logger.warning(
+                    f"⚠️ JSON decode error in WhatsApp extraction: {json_error}"
+                )
+                return {}
+
+        except Exception as e:
+            logger.error(f"❌ WhatsApp basic extraction failed: {e}")
+            return {}
+
     def process_raw_jobs(self, limit: Optional[int] = None):
         """Process raw jobs with AI enhancement and 14-day filter"""
         try:
@@ -500,26 +583,24 @@ class AIEnhancedJobParser:
         source = raw_job.get("source", "unknown")
 
         if source == "whatsapp":
-            # WhatsApp jobs have text field with full job posting
+            # WhatsApp jobs need AI extraction for basic fields
             text = raw_data.get("text", "")
-            email = self.extract_email_from_text(text)
-            whatsapp = self.extract_whatsapp_from_text(text)
-            job_url = self.extract_url_from_text(
-                text
-            )  # NEW: Extract URLs for CTA buttons
+
+            # Use AI to extract basic structured data from WhatsApp text
+            whatsapp_data = self.extract_whatsapp_basic_data(text)
 
             return {
-                "title": self.extract_title_from_whatsapp_text(text),
-                "company": None,  # Will be extracted by AI
-                "location": None,  # Will be extracted by AI
-                "job_url": job_url,  # Now extracts URLs from WhatsApp text
+                "title": whatsapp_data.get("title"),
+                "company": whatsapp_data.get("company"),
+                "location": whatsapp_data.get("location"),
+                "job_url": whatsapp_data.get("job_url"),
                 "description": text,
-                "employment_type": None,  # Will be extracted by AI
-                "salary_min": None,
-                "salary_max": None,
-                "salary_currency": None,
-                "email": email,
-                "whatsapp_number": whatsapp,
+                "employment_type": whatsapp_data.get("employment_type"),
+                "salary_min": whatsapp_data.get("salary_min"),
+                "salary_max": whatsapp_data.get("salary_max"),
+                "salary_currency": whatsapp_data.get("salary_currency"),
+                "email": whatsapp_data.get("email"),
+                "whatsapp_number": whatsapp_data.get("whatsapp_number"),
                 "source": source,
                 "source_job_id": raw_job.get("source_job_id"),
                 "raw_job_id": raw_job.get("id"),
