@@ -257,14 +257,135 @@ class PreferenceHandler:
                     )
                     self.db.connection.commit()
 
-                # Show confirmation instead of immediately confirming
-                return self.show_preference_confirmation(user_id, preferences)
+                # Auto-confirm preferences if user has enough essential data
+                auto_confirmed = self.auto_confirm_preferences_if_complete(
+                    user_id, preferences
+                )
+
+                if auto_confirmed:
+                    return self.show_auto_confirmed_message(user_id, preferences)
+                else:
+                    # Show manual confirmation for incomplete preferences
+                    return self.show_preference_confirmation(user_id, preferences)
             else:
                 return "❌ Failed to save preferences. Please try again."
 
         except Exception as e:
             logger.error(f"❌ Error processing preference form: {e}")
             return "Something went wrong. Type `settings` to try again."
+
+    def auto_confirm_preferences_if_complete(
+        self, user_id: int, preferences: dict
+    ) -> bool:
+        """Auto-confirm preferences if user has enough essential data"""
+        try:
+            # Check if user has the essential preferences for job matching
+            has_job_roles = (
+                preferences.get("job_roles") and len(preferences["job_roles"]) > 0
+            )
+            has_locations = (
+                preferences.get("preferred_locations")
+                and len(preferences["preferred_locations"]) > 0
+            )
+
+            # Optional but helpful fields
+            has_salary = preferences.get("salary_min") is not None
+            has_work_style = (
+                preferences.get("work_arrangements")
+                and len(preferences["work_arrangements"]) > 0
+            )
+
+            # Auto-confirm if user has job roles and locations (minimum for matching)
+            if has_job_roles and has_locations:
+                # Mark preferences as confirmed
+                cursor = self.db.connection.cursor()
+                cursor.execute(
+                    "UPDATE user_preferences SET preferences_confirmed = TRUE WHERE user_id = %s",
+                    (user_id,),
+                )
+                self.db.connection.commit()
+
+                # Start window for job monitoring
+                self.window_manager.start_new_window(user_id)
+
+                logger.info(f"✅ Auto-confirmed preferences for user {user_id}")
+                return True
+            else:
+                # Set to FALSE if incomplete
+                cursor = self.db.connection.cursor()
+                cursor.execute(
+                    "UPDATE user_preferences SET preferences_confirmed = FALSE WHERE user_id = %s",
+                    (user_id,),
+                )
+                self.db.connection.commit()
+
+                logger.info(
+                    f"❌ Preferences incomplete for user {user_id} - not auto-confirmed"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error auto-confirming preferences: {e}")
+            return False
+
+    def show_auto_confirmed_message(self, user_id: int, preferences: dict) -> str:
+        """Show message when preferences are auto-confirmed"""
+        try:
+            # Get user's name
+            cursor = self.db.connection.cursor()
+            cursor.execute("SELECT name FROM users WHERE id = %s", (user_id,))
+            user_name_result = cursor.fetchone()
+            user_name = (
+                user_name_result[0].split()[0]
+                if user_name_result and user_name_result[0]
+                else "there"
+            )
+
+            # Format preferences summary
+            job_roles = preferences.get("job_roles", [])
+            job_roles_str = ", ".join(job_roles) if job_roles else "Not set"
+
+            locations = preferences.get("preferred_locations", [])
+            locations_str = ", ".join(locations) if locations else "Not set"
+
+            message = (
+                f"🎉 Perfect, {user_name}! Your job preferences are confirmed and active.\n\n"
+                f"🎯 **Looking for:** {job_roles_str}\n"
+                f"📍 **Location:** {locations_str}\n\n"
+                "🔍 I'm now actively searching for jobs that match your criteria.\n"
+                "You'll get instant notifications when perfect opportunities appear!\n\n"
+                "💬 Feel free to chat with me about:\n"
+                "• Job market insights\n"
+                "• Career advice\n"
+                "• Interview tips\n"
+                "• Or just say 'jobs' to see current matches\n\n"
+                "Type 'settings' anytime to update your preferences. I'm here to help! 😊"
+            )
+
+            # Add action buttons
+            buttons = [
+                {
+                    "type": "reply",
+                    "reply": {"id": "view_jobs_now", "title": "🔍 View Jobs"},
+                },
+                {
+                    "type": "reply",
+                    "reply": {"id": "main_menu", "title": "📋 Main Menu"},
+                },
+            ]
+
+            # Get phone number for this user
+            cursor.execute("SELECT phone_number FROM users WHERE id = %s", (user_id,))
+            phone_result = cursor.fetchone()
+            if phone_result:
+                phone_number = phone_result[0]
+                self.whatsapp_service.send_button_menu(phone_number, message, buttons)
+
+            return ""  # Don't send system message
+
+        except Exception as e:
+            logger.error(f"❌ Error showing auto-confirmed message: {e}")
+            return "✅ Preferences confirmed! I'm now searching for jobs for you."
 
     def show_preference_confirmation(self, user_id: int, preferences: dict) -> str:
         """Show user their preferences and ask for confirmation"""

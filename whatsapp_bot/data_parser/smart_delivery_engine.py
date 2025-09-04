@@ -139,7 +139,7 @@ class SmartDeliveryEngine:
                 JOIN conversation_windows cw ON u.id = cw.user_id
                 WHERE up.preferences_confirmed = TRUE
                 AND cw.window_status = 'active'
-                AND cw.last_activity >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+                AND cw.last_activity >= CURRENT_TIMESTAMP - INTERVAL '23 hours 30 minutes'
             """
             )
 
