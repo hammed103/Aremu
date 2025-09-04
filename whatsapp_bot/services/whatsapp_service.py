@@ -243,10 +243,25 @@ class WhatsAppService:
                 )
                 return self.send_message(phone_number, job_summary)
 
-            # Enhance job summary with additional contact methods
+            # Enhance job summary with ALL contact methods (primary + additional)
+            all_contacts = []
+
+            # Always include the primary contact method in the message text
+            if whatsapp_number:
+                wa_link = self._format_whatsapp_link(whatsapp_number)
+                all_contacts.append(f"📱 WhatsApp: {wa_link}")
+            elif email:
+                all_contacts.append(f"📧 Email: {email}")
+            elif job_url:
+                all_contacts.append(f"🔗 Apply: {job_url}")
+
+            # Add any additional contact methods
+            all_contacts.extend(additional_contacts)
+
+            # Enhance job summary with all contact methods
             enhanced_summary = job_summary
-            if additional_contacts:
-                enhanced_summary += "\n\n" + "\n".join(additional_contacts)
+            if all_contacts:
+                enhanced_summary += "\n\n" + "\n".join(all_contacts)
 
             # Ensure button text fits WhatsApp's 20 character limit
             cta_button_text = self._ensure_button_text_length(cta_button_text)
