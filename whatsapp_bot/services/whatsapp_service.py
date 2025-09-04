@@ -196,10 +196,10 @@ class WhatsAppService:
             logger.info(f"📧 SEND_JOB_WITH_APPLY_BUTTON: email={email}")
 
             # WhatsApp Cloud API only supports ONE CTA URL button per message
-            # Priority logic for CTA selection:
-            # 1. Job URL (highest priority - main application)
-            # 2. WhatsApp contact (secondary - direct contact)
-            # 3. Email contact (tertiary - traditional contact)
+            # Priority logic for CTA selection (as requested):
+            # 1. WhatsApp contact (highest priority - direct contact)
+            # 2. Email contact (secondary - traditional contact)
+            # 3. Job URL (tertiary - application link)
 
             # For multiple contact methods, we'll include them in the message text
             # and use the highest priority one as the CTA button
@@ -209,33 +209,32 @@ class WhatsAppService:
             additional_contacts = []
 
             # Determine primary CTA and collect additional contact methods
-            if job_url:
-                cta_url = job_url
-                cta_button_text = apply_button_designer.get_apply_button_text(
-                    job_url, company, job_title
-                )
-                logger.info(f"🔗 Primary CTA: Job URL")
-
-                # Add secondary contact methods to message text
-                if whatsapp_number:
-                    wa_link = self._format_whatsapp_link(whatsapp_number)
-                    additional_contacts.append(f"📱 WhatsApp: {wa_link}")
-                if email:
-                    additional_contacts.append(f"📧 Email: {email}")
-
-            elif whatsapp_number:
+            if whatsapp_number:
                 cta_url = self._format_whatsapp_link(whatsapp_number)
                 cta_button_text = self._get_whatsapp_button_text(company, job_title)
-                logger.info(f"📱 Primary CTA: WhatsApp")
+                logger.info(f"� Primary CTA: WhatsApp")
 
-                # Add email as secondary contact method
+                # Add secondary contact methods to message text
                 if email:
-                    additional_contacts.append(f"📧 Email: {email}")
+                    additional_contacts.append(f"� Email: {email}")
+                if job_url:
+                    additional_contacts.append(f"� Apply: {job_url}")
 
             elif email:
                 cta_url = f"mailto:{email}"
                 cta_button_text = self._get_email_button_text(company, job_title)
-                logger.info(f"📧 Primary CTA: Email")
+                logger.info(f"� Primary CTA: Email")
+
+                # Add job URL as secondary contact method
+                if job_url:
+                    additional_contacts.append(f"� Apply: {job_url}")
+
+            elif job_url:
+                cta_url = job_url
+                cta_button_text = apply_button_designer.get_apply_button_text(
+                    job_url, company, job_title
+                )
+                logger.info(f"� Primary CTA: Job URL")
 
             else:
                 # No contact methods available - send as regular message
@@ -448,53 +447,53 @@ class WhatsAppService:
     def _get_email_button_text(self, company: str = None, job_title: str = None) -> str:
         """Get smart email button text based on context"""
         try:
-            # Company-specific email buttons
+            # Company-specific email buttons with "Send CV to..." format
             if company:
                 company_lower = company.lower()
 
                 # Tech companies
                 if "google" in company_lower:
-                    return "📧 Email Google"
+                    return "📧 Send CV to Google"
                 elif "microsoft" in company_lower:
-                    return "📧 Email Microsoft"
+                    return "📧 Send CV to Microsoft"
                 elif "meta" in company_lower:
-                    return "📧 Email Meta"
+                    return "📧 Send CV to Meta"
                 elif "dangote" in company_lower:
-                    return "📧 Email Dangote"
+                    return "📧 Send CV to Dangote"
                 elif "mtn" in company_lower:
-                    return "📧 Email MTN"
+                    return "📧 Send CV to MTN"
                 elif "gtbank" in company_lower or "gtb" in company_lower:
-                    return "📧 Email GTBank"
+                    return "📧 Send CV to GTBank"
                 elif "access" in company_lower and "bank" in company_lower:
-                    return "📧 Email Access"
+                    return "📧 Send CV to Access"
                 elif "zenith" in company_lower:
-                    return "📧 Email Zenith"
+                    return "📧 Send CV to Zenith"
 
-                # Generic company name (truncate if too long)
+                # Generic company name (truncate if too long for button)
                 clean_company = company.replace("Limited", "Ltd").replace(
                     "Nigeria", "NG"
                 )
-                if len(clean_company) <= 12:
-                    return f"📧 Email {clean_company}"
+                if len(clean_company) <= 8:  # Shorter limit for "Send CV to X"
+                    return f"📧 Send CV to {clean_company}"
 
             # Role-specific email buttons
             if job_title:
                 title_lower = job_title.lower()
                 if "manager" in title_lower:
-                    return "📧 Email Manager"
+                    return "📧 Send CV to Manager"
                 elif "developer" in title_lower or "engineer" in title_lower:
-                    return "📧 Email Team"
+                    return "📧 Send CV to Team"
                 elif "sales" in title_lower:
-                    return "📧 Email Sales"
+                    return "📧 Send CV to Sales"
                 elif "hr" in title_lower or "human" in title_lower:
-                    return "📧 Email HR"
+                    return "📧 Send CV to HR"
                 elif "finance" in title_lower:
-                    return "📧 Email Finance"
+                    return "📧 Send CV to Finance"
                 elif "marketing" in title_lower:
-                    return "📧 Email Marketing"
+                    return "📧 Send CV to Marketing"
 
             # Default professional button
-            return "📧 Email Employer"
+            return "📧 Send CV"
 
         except Exception as e:
             logger.error(f"Error generating email button text: {e}")
