@@ -588,7 +588,16 @@ class IntelligentJobMatcher:
         if isinstance(user_arrangements, set):
             user_arrangements = list(user_arrangements)
         elif isinstance(user_arrangements, str):
-            user_arrangements = [user_arrangements]
+            # Handle PostgreSQL set format like '{hybrid}' or '{remote,hybrid}'
+            if user_arrangements.startswith("{") and user_arrangements.endswith("}"):
+                # Remove braces and split by comma
+                clean_str = user_arrangements.strip("{}")
+                if clean_str:
+                    user_arrangements = [item.strip() for item in clean_str.split(",")]
+                else:
+                    user_arrangements = []
+            else:
+                user_arrangements = [user_arrangements]
         elif not isinstance(user_arrangements, list):
             user_arrangements = []
 
