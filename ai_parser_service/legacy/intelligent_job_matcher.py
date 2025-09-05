@@ -241,7 +241,35 @@ class IntelligentJobMatcher:
             return []
 
     def _calculate_job_score(self, user_prefs: Dict, job: Dict) -> float:
-        """Calculate AI-enhanced job match score using multiple strategies"""
+        """
+        Calculate AI-enhanced job match score using multiple intelligent strategies
+
+        ENHANCED SCORING SYSTEM (Total: 102 points, capped at 100):
+        ================================================================
+        1. AI Job Titles (35 pts)     - Fuzzy matching with 15+ AI variations
+        2. Work Arrangement (20 pts)   - Remote/hybrid/onsite with AI detection
+        3. Salary Matching (20 pts)    - Currency conversion & range flexibility
+        4. Experience Level (10 pts)   - AI years + level hierarchy matching
+        5. AI Job Function (7 pts)     - Semantic function classification
+        6. AI Industry (5 pts)         - Industry category matching
+        7. Semantic Clusters (5 pts)   - Fallback fuzzy matching
+        8. Skills Matching (0 pts)     - DISABLED for now
+        9. Contact Info Bonus (0 pts)  - DISABLED for now
+
+        LOCATION FILTERING (Not Scored):
+        - Location works as a FILTER, not scoring
+        - Jobs that don't match user's preferred_locations are excluded
+        - Intelligent abbreviation handling (Lagos/LOS, Abuja/FCT, PH, etc.)
+        - Geographic proximity for Nigerian cities and states
+
+        Key Enhancements:
+        - Uses AI-enhanced fields (ai_city, ai_remote_allowed, ai_salary_*, etc.)
+        - Location filtering with abbreviation intelligence
+        - Currency conversion with flexible salary ranges
+        - Required vs preferred skills distinction
+        - Experience level hierarchy with flexibility
+        - Work arrangement intelligent detection
+        """
 
         # LOCATION FILTERING - Apply before scoring
         if not self._is_location_compatible(user_prefs, job):
@@ -286,593 +314,6 @@ class IntelligentJobMatcher:
         # total_score += contact_score
 
         return min(total_score, 100.0)  # Cap at 100%
-
-    def _score_ai_job_titles_match(self, user_prefs: dict, job: dict) -> float:
-        """Enhanced job title matching using AI job titles array"""
-        user_roles = user_prefs.get("job_roles", [])
-        if not user_roles:
-            return 0.0
-
-        # Get AI job titles array (15+ variations per job)
-        ai_job_titles = job.get("ai_job_titles", []) or []
-        job_title = job.get("title", "").lower()
-
-        max_score = 0.0
-
-        for user_role in user_roles:
-            user_role_lower = user_role.lower()
-
-            # Check exact matches in AI job titles array
-            for ai_title in ai_job_titles:
-                if ai_title and user_role_lower in ai_title.lower():
-                    max_score = max(max_score, 35.0)  # Full points for AI match
-                    break
-
-            # Check fuzzy matches in AI job titles
-            if max_score < 35.0:
-                for ai_title in ai_job_titles:
-                    if ai_title:
-                        similarity = SequenceMatcher(
-                            None, user_role_lower, ai_title.lower()
-                        ).ratio()
-                        if similarity > 0.8:
-                            max_score = max(max_score, 30.0)
-                        elif similarity > 0.6:
-                            max_score = max(max_score, 20.0)
-
-            # Fallback to original title
-            if max_score < 20.0 and user_role_lower in job_title:
-                max_score = max(max_score, 15.0)
-
-        return max_score
-
-    def _score_ai_job_function_match(self, user_prefs: dict, job: dict) -> float:
-        """Match based on AI job function (Sales, Engineering, etc.)"""
-        user_categories = user_prefs.get("job_categories", [])
-        user_roles = user_prefs.get("job_roles", [])
-
-        if not user_categories and not user_roles:
-            return 0.0
-
-        ai_job_function = job.get("ai_job_function", "") or ""
-        if not ai_job_function:
-            return 0.0
-
-        # Handle case where ai_job_function might be a list
-        if isinstance(ai_job_function, list):
-            ai_job_function = ai_job_function[0] if ai_job_function else ""
-
-        if not ai_job_function:
-            return 0.0
-
-        ai_function_lower = ai_job_function.lower()
-
-        # Check user categories first (highest priority)
-        for category in user_categories:
-            if category and category.lower() in ai_function_lower:
-                return 25.0
-
-        # Enhanced direct matching for data roles (second priority - 25 points)
-        if any(
-            "data" in role.lower() or "analyst" in role.lower() for role in user_roles
-        ):
-            if any(
-                keyword in ai_function_lower
-                for keyword in ["data", "analytics", "analyst", "intelligence"]
-            ):
-                return 25.0  # Full points for direct data match
-
-        # Check user roles for function keywords (third priority - 20 points)
-        function_keywords = {
-            "sales": ["sales", "business development", "account management"],
-            "engineering": ["engineer", "developer", "technical", "software"],
-            "marketing": ["marketing", "digital marketing", "content"],
-            "customer service": ["customer", "support", "service"],
-            "finance": ["finance", "accounting", "financial"],
-            "hr": ["hr", "human resources", "recruitment"],
-            "operations": ["operations", "logistics", "supply chain"],
-        }
-
-        for user_role in user_roles:
-            user_role_lower = user_role.lower()
-            for func, keywords in function_keywords.items():
-                if any(keyword in user_role_lower for keyword in keywords):
-                    if func in ai_function_lower:
-                        return 20.0
-
-        return 0.0
-
-    def _score_ai_industry_match(self, user_prefs: dict, job: dict) -> float:
-        """Match based on AI industry classification"""
-        user_industries = user_prefs.get("industry_preferences", [])
-        user_roles = user_prefs.get("job_roles", [])
-
-        ai_industries = job.get("ai_industry", []) or []
-        if not ai_industries:
-            return 0.0
-
-        # Direct industry preference match
-        if user_industries:
-            for user_industry in user_industries:
-                for ai_industry in ai_industries:
-                    if (
-                        user_industry
-                        and ai_industry
-                        and user_industry.lower() in ai_industry.lower()
-                    ):
-                        return 20.0
-
-        # Infer industry from user roles
-        role_industry_map = {
-            "tech": ["technology", "software", "information technology"],
-            "finance": ["finance", "financial services", "banking"],
-            "healthcare": ["healthcare", "medical", "pharmaceutical"],
-            "education": ["education", "academic", "training"],
-            "retail": ["retail", "e-commerce", "consumer goods"],
-            "media": ["media", "entertainment", "advertising"],
-        }
-
-        for user_role in user_roles:
-            user_role_lower = user_role.lower()
-            for role_key, industries in role_industry_map.items():
-                if role_key in user_role_lower:
-                    for ai_industry in ai_industries:
-                        if any(ind in ai_industry.lower() for ind in industries):
-                            return 15.0
-
-        return 0.0
-
-    def _score_job_titles(self, user_prefs: Dict, job: Dict) -> float:
-        """Score exact job title matches"""
-        user_roles = user_prefs.get("job_roles", [])
-        if not user_roles:
-            return 0.0
-
-        # Get job title fields
-        job_title = (job.get("title", "") or "").lower()
-
-        # Handle ai_job_title which might be a list
-        ai_job_title_raw = job.get("ai_job_title", "") or ""
-        if isinstance(ai_job_title_raw, list):
-            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
-        else:
-            ai_job_title = ai_job_title_raw.lower()
-
-        max_score = 0.0
-        for user_role in user_roles:
-            user_role_lower = user_role.lower()
-
-            # Exact matches
-            if user_role_lower in job_title or user_role_lower in ai_job_title:
-                max_score = max(max_score, 40.0)
-            # Partial matches
-            elif any(word in job_title for word in user_role_lower.split()):
-                max_score = max(max_score, 25.0)
-            elif any(word in ai_job_title for word in user_role_lower.split()):
-                max_score = max(max_score, 20.0)
-
-        return max_score
-
-    def _score_fuzzy_titles(self, user_prefs: Dict, job: Dict) -> float:
-        """Score fuzzy job title matches using string similarity"""
-        user_roles = user_prefs.get("job_roles", [])
-        if not user_roles:
-            return 0.0
-
-        job_title = (job.get("title", "") or "").lower()
-
-        # Handle ai_job_title which might be a list
-        ai_job_title_raw = job.get("ai_job_title", "") or ""
-        if isinstance(ai_job_title_raw, list):
-            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
-        else:
-            ai_job_title = ai_job_title_raw.lower()
-
-        max_score = 0.0
-        for user_role in user_roles:
-            user_role_lower = user_role.lower()
-
-            # Calculate similarity ratios
-            title_similarity = SequenceMatcher(None, user_role_lower, job_title).ratio()
-            ai_title_similarity = SequenceMatcher(
-                None, user_role_lower, ai_job_title
-            ).ratio()
-
-            # Convert similarity to score (threshold of 0.6 for relevance)
-            best_similarity = max(title_similarity, ai_title_similarity)
-            if best_similarity >= 0.6:
-                fuzzy_score = (
-                    (best_similarity - 0.6) / 0.4 * 30.0
-                )  # Scale to 0-30 points
-                max_score = max(max_score, fuzzy_score)
-
-        return max_score
-
-    def _score_semantic_clusters(self, user_prefs: Dict, job: Dict) -> float:
-        """Score semantic cluster matches"""
-        user_roles = user_prefs.get("job_roles", [])
-        if not user_roles:
-            return 0.0
-
-        job_title = (job.get("title", "") or "").lower()
-
-        # Handle ai_job_title which might be a list
-        ai_job_title_raw = job.get("ai_job_title", "") or ""
-        if isinstance(ai_job_title_raw, list):
-            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
-        else:
-            ai_job_title = ai_job_title_raw.lower()
-
-        job_description = (job.get("description", "") or "").lower()
-
-        # Find user's clusters
-        user_clusters = set()
-        for user_role in user_roles:
-            user_role_lower = user_role.lower()
-            for cluster_name, cluster_terms in self.JOB_CLUSTERS.items():
-                if any(term in user_role_lower for term in cluster_terms):
-                    user_clusters.add(cluster_name)
-
-        if not user_clusters:
-            return 0.0
-
-        # Check if job matches any user clusters
-        max_score = 0.0
-        for cluster_name in user_clusters:
-            cluster_terms = self.JOB_CLUSTERS[cluster_name]
-
-            # Check title matches
-            title_matches = sum(
-                1 for term in cluster_terms if term in job_title or term in ai_job_title
-            )
-
-            # Check description matches (lower weight)
-            desc_matches = sum(1 for term in cluster_terms if term in job_description)
-
-            if title_matches > 0:
-                cluster_score = min(title_matches * 15.0, 25.0)  # Up to 25 points
-                max_score = max(max_score, cluster_score)
-            elif desc_matches > 0:
-                cluster_score = min(desc_matches * 5.0, 15.0)  # Up to 15 points
-                max_score = max(max_score, cluster_score)
-
-        return max_score
-
-    def _score_skills_match(self, user_prefs: Dict, job: Dict) -> float:
-        """Score skills matching with synonyms"""
-        user_skills = user_prefs.get("technical_skills", []) or []
-        if not user_skills:
-            return 0.0
-
-        # Get job skills from various fields
-        job_description = (job.get("description", "") or "").lower()
-
-        # Handle ai_skills_required which might be a list
-        ai_skills_raw = job.get("ai_skills_required", "") or ""
-        if isinstance(ai_skills_raw, list):
-            ai_skills = " ".join(ai_skills_raw).lower() if ai_skills_raw else ""
-        else:
-            ai_skills = ai_skills_raw.lower()
-
-        matched_skills = 0
-        total_user_skills = len(user_skills)
-
-        for user_skill in user_skills:
-            user_skill_lower = user_skill.lower()
-
-            # Check direct matches
-            if user_skill_lower in job_description or user_skill_lower in ai_skills:
-                matched_skills += 1
-                continue
-
-            # Check synonym matches
-            for skill_group, synonyms in self.SKILL_SYNONYMS.items():
-                if user_skill_lower in synonyms:
-                    if any(
-                        syn in job_description or syn in ai_skills for syn in synonyms
-                    ):
-                        matched_skills += 1
-                        break
-
-        if total_user_skills > 0:
-            skill_ratio = matched_skills / total_user_skills
-            return skill_ratio * 20.0  # Up to 20 points
-
-        return 0.0
-
-    def _score_work_arrangement(self, user_prefs: Dict, job: Dict) -> float:
-        """Score work arrangement matching"""
-        user_arrangements = user_prefs.get("work_arrangements", []) or []
-
-        # Handle different data types (list, set, or single string)
-        if isinstance(user_arrangements, set):
-            user_arrangements = list(user_arrangements)
-        elif isinstance(user_arrangements, str):
-            # Handle PostgreSQL set format like '{hybrid}' or '{remote,hybrid}'
-            if user_arrangements.startswith("{") and user_arrangements.endswith("}"):
-                # Remove braces and split by comma
-                clean_str = user_arrangements.strip("{}")
-                if clean_str:
-                    user_arrangements = [item.strip() for item in clean_str.split(",")]
-                else:
-                    user_arrangements = []
-            else:
-                user_arrangements = [user_arrangements]
-        elif not isinstance(user_arrangements, list):
-            user_arrangements = []
-
-        if not user_arrangements:
-            return 0.0
-
-        # Check job work arrangement indicators
-        job_title = (job.get("title", "") or "").lower()
-        job_description = (job.get("description", "") or "").lower()
-        location = (job.get("location", "") or "").lower()
-        ai_remote = job.get("ai_remote_allowed", False)
-        is_remote = job.get("is_remote", False)
-
-        max_score = 0.0
-
-        for arrangement in user_arrangements:
-            arrangement_lower = arrangement.lower()
-
-            # FLEXIBLE/HYBRID users are open to ANY work arrangement
-            if arrangement_lower in ["hybrid", "flexible", "any", "open"]:
-                # Give high score for any job with clear work arrangement
-                if (
-                    ai_remote
-                    or is_remote
-                    or "remote" in job_title
-                    or "remote" in job_description
-                ):
-                    max_score = max(max_score, 20.0)  # Perfect for remote
-                elif (
-                    "hybrid" in job_title
-                    or "hybrid" in job_description
-                    or "flexible" in job_description
-                ):
-                    max_score = max(max_score, 20.0)  # Perfect for hybrid
-                else:
-                    max_score = max(max_score, 18.0)  # Good for on-site (default)
-
-            elif arrangement_lower == "remote":
-                if (
-                    ai_remote
-                    or is_remote
-                    or "remote" in job_title
-                    or "remote" in job_description
-                    or "remote" in location
-                ):
-                    max_score = max(max_score, 20.0)
-
-            elif arrangement_lower in ["on-site", "onsite", "office"]:
-                if not (ai_remote or is_remote or "remote" in location):
-                    max_score = max(max_score, 18.0)  # Good score for on-site
-
-        return max_score
-
-    def _score_location_match(self, user_prefs: Dict, job: Dict) -> float:
-        """Score location matching"""
-        user_locations = user_prefs.get("preferred_locations", []) or []
-        willing_to_relocate = user_prefs.get("willing_to_relocate", False)
-
-        if not user_locations:
-            return 0.0
-
-        job_location = (job.get("location", "") or "").lower()
-
-        # Exact location matches
-        for user_location in user_locations:
-            user_loc_lower = user_location.lower()
-            if user_loc_lower in job_location:
-                return 10.0
-
-        # If willing to relocate, give partial score for any location
-        if willing_to_relocate and job_location:
-            return 5.0
-
-        return 0.0
-
-    def _score_salary_match(self, user_prefs: Dict, job: Dict) -> float:
-        """
-        Enhanced salary matching with fair handling of jobs without salary data
-
-        Most jobs don't include salary, so we give partial points instead of 0
-        to avoid unfairly penalizing the majority of job postings.
-        """
-        user_currency = user_prefs.get("salary_currency")
-        user_min = user_prefs.get("salary_min")
-        user_max = user_prefs.get("salary_max")
-
-        # If user has no salary preferences, return neutral score
-        if not any([user_currency, user_min, user_max]):
-            return 0.0
-
-        # Get job salary data (prefer AI-enhanced fields)
-        job_currency = job.get("ai_salary_currency") or job.get("salary_currency")
-        job_min = job.get("ai_salary_min") or job.get("salary_min")
-        job_max = job.get("ai_salary_max") or job.get("salary_max")
-
-        # Check if job has any salary data
-        job_has_salary = any([job_currency, job_min, job_max])
-
-        # IMPORTANT: If user wants salary info but job has none, give partial points
-        # This prevents penalizing the majority of jobs that don't include salary
-        if not job_has_salary:
-            # Give 10/20 points for jobs without salary data (improved from 8)
-            return 10.0
-
-        score = 0.0
-
-        # Currency match (enhanced)
-        if user_currency and job_currency:
-            if user_currency.upper() == job_currency.upper():
-                score += 8.0  # Perfect currency match
-            else:
-                # Partial points for related currencies
-                currency_groups = {
-                    "NGN": ["NGN", "NAIRA"],
-                    "USD": ["USD", "DOLLAR", "DOLLARS"],
-                    "EUR": ["EUR", "EURO", "EUROS"],
-                    "GBP": ["GBP", "POUND", "POUNDS"],
-                }
-                user_group = None
-                job_group = None
-
-                for group, variants in currency_groups.items():
-                    if user_currency.upper() in variants:
-                        user_group = group
-                    if job_currency.upper() in variants:
-                        job_group = group
-
-                if user_group == job_group:
-                    score += 6.0  # Same currency group
-
-        # Salary range overlap (enhanced)
-        if user_min and job_max and user_min <= job_max:
-            score += 6.0  # User minimum is achievable
-        if user_max and job_min and user_max >= job_min:
-            score += 6.0  # User maximum covers job minimum
-
-        return min(score, 20.0)  # Cap at 20 points
-
-    def _score_contact_availability(self, job: Dict) -> float:
-        """Score jobs based on availability of contact information for CTA buttons"""
-        score = 0.0
-
-        # Check for job URL (highest priority for apply buttons)
-        job_url = job.get("job_url")
-        if job_url and job_url.strip():
-            score += 6.0  # 6 points for job URL
-
-        # Check for email contact
-        email = job.get("email") or job.get("ai_email")
-        if email and email.strip():
-            score += 3.0  # 3 points for email
-
-        # Check for WhatsApp contact (highest value for user engagement)
-        whatsapp = job.get("whatsapp_number") or job.get("ai_whatsapp_number")
-        if whatsapp and whatsapp.strip():
-            score += 4.0  # 4 points for WhatsApp
-
-        # Bonus for multiple contact methods
-        contact_methods = sum(
-            [
-                1 if job_url and job_url.strip() else 0,
-                1 if email and email.strip() else 0,
-                1 if whatsapp and whatsapp.strip() else 0,
-            ]
-        )
-
-        if contact_methods >= 2:
-            score += 2.0  # 2 bonus points for multiple contact methods
-
-        return min(score, 10.0)  # Cap at 10 points
-
-    def _score_experience_match(self, user_prefs: Dict, job: Dict) -> float:
-        """Score experience level matching"""
-        user_exp_level = user_prefs.get("experience_level")
-        user_years = user_prefs.get("years_of_experience")
-
-        if not user_exp_level and not user_years:
-            return 0.0
-
-        job_description = (job.get("description", "") or "").lower()
-
-        # Handle ai_experience_required which might be a list
-        ai_exp_raw = job.get("ai_experience_required", "") or ""
-        if isinstance(ai_exp_raw, list):
-            ai_exp_required = " ".join(ai_exp_raw).lower() if ai_exp_raw else ""
-        else:
-            ai_exp_required = ai_exp_raw.lower()
-
-        # Simple experience level matching
-        if user_exp_level:
-            if user_exp_level in job_description or user_exp_level in ai_exp_required:
-                return 5.0
-
-        # Years of experience matching (basic)
-        if user_years:
-            # Look for year patterns in job description
-            import re
-
-            year_patterns = re.findall(
-                r"(\d+)\+?\s*years?", job_description + " " + ai_exp_required
-            )
-            if year_patterns:
-                required_years = min(int(y) for y in year_patterns)
-                if user_years >= required_years:
-                    return 3.0
-
-        return 0.0
-
-    def _get_match_reasons(self, user_prefs: Dict, job: Dict) -> List[str]:
-        """Get human-readable reasons for the match"""
-        reasons = []
-
-        # Job title matches
-        user_roles = user_prefs.get("job_roles", [])
-        job_title = (job.get("title", "") or "").lower()
-        for role in user_roles:
-            if role.lower() in job_title:
-                reasons.append(f"Job title matches '{role}'")
-
-        # Skills matches
-        user_skills = user_prefs.get("technical_skills", []) or []
-        job_description = (job.get("description", "") or "").lower()
-        for skill in user_skills:
-            if skill and skill.lower() in job_description:
-                reasons.append(f"Requires '{skill}' skill")
-
-        # Work arrangement matches
-        user_arrangements = user_prefs.get("work_arrangements", []) or []
-        if "remote" in user_arrangements:
-            if job.get("ai_remote_allowed") or "remote" in job_title:
-                reasons.append("Remote work available")
-
-        # Location matches - DISABLED
-        # user_locations = user_prefs.get("preferred_locations", []) or []
-        # job_location = (job.get("location", "") or "").lower()
-        # for location in user_locations:
-        #     if location.lower() in job_location:
-        #         reasons.append(f"Located in {location}")
-
-        return reasons[:3]  # Limit to top 3 reasons
-
-    def format_job_for_whatsapp(self, job: Dict, index: int) -> str:
-        """Format job for WhatsApp with intelligent match information"""
-        try:
-            # Extract key information
-            title = job.get("title", "Job Opportunity")
-            company = job.get("company", "Company")
-            location = job.get("location", "Location not specified")
-
-            # Match information
-            match_score = job.get("match_score", 0)
-            match_reasons = job.get("match_reasons", [])
-
-            # Build message
-            message = f"""*{index}. {title}*
-🏢 {company}
-📍 {location}"""
-
-            # Add match score and reasons
-            if match_score > 0:
-                message += f"\n⭐ {match_score:.0f}% match"
-                if match_reasons:
-                    message += f"\n🎯 {', '.join(match_reasons)}"
-
-            # Add application link
-            if job.get("job_url"):
-                message += f"\n🔗 Apply: {job['job_url']}"
-            elif job.get("ai_application_url"):
-                message += f"\n🔗 Apply: {job['ai_application_url']}"
-
-            return message
-
-        except Exception as e:
-            logger.error(f"❌ Error formatting job: {e}")
-            return f"{index}. Job opportunity available (formatting error)"
 
     def _is_location_compatible(self, user_prefs: Dict, job: Dict) -> bool:
         """
@@ -1217,3 +658,1704 @@ class IntelligentJobMatcher:
 
         # Only allow matches within the SAME region (strict proximity)
         return user_region == job_region and job_region is not None
+
+    def _score_ai_job_titles_match(self, user_prefs: dict, job: dict) -> float:
+        """
+        Enhanced job title matching using ALL available fields with intelligent weighting
+
+        User Fields:
+        - job_categories[] (high-level: technology, healthcare, etc.)
+        - job_roles[] (specific: frontend developer, data analyst, etc.)
+        - user_job_input (verbatim: "I want to be a Python developer")
+
+        Job Fields:
+        - ai_job_titles[] (AI-generated 15+ variations)
+        - title (original job title)
+        """
+        # Get all user job-related data
+        user_categories = user_prefs.get("job_categories", []) or []
+        user_roles = user_prefs.get("job_roles", []) or []
+        user_job_input = user_prefs.get("user_job_input", "") or ""
+
+        # If no job preferences at all, return 0
+        if not user_categories and not user_roles and not user_job_input:
+            return 0.0
+
+        # Get job title data
+        ai_job_titles = job.get("ai_job_titles", []) or []
+        job_title = job.get("title", "").lower()
+
+        max_score = 0.0
+
+        # 1. EXACT MATCHES IN AI JOB TITLES (35 points - highest priority)
+        max_score = max(
+            max_score,
+            self._score_exact_ai_title_matches(
+                user_roles, user_job_input, ai_job_titles
+            ),
+        )
+
+        # 2. FUZZY MATCHES IN AI JOB TITLES (25-30 points)
+        if max_score < 35.0:
+            max_score = max(
+                max_score,
+                self._score_fuzzy_ai_title_matches(
+                    user_roles, user_job_input, ai_job_titles
+                ),
+            )
+
+        # 3. CATEGORY-LEVEL MATCHES (20 points)
+        if max_score < 30.0:
+            max_score = max(
+                max_score,
+                self._score_category_title_matches(
+                    user_categories, ai_job_titles, job_title
+                ),
+            )
+
+        # 4. ORIGINAL TITLE FALLBACK (15 points)
+        if max_score < 20.0:
+            max_score = max(
+                max_score,
+                self._score_original_title_matches(
+                    user_roles, user_job_input, job_title
+                ),
+            )
+
+        # 5. SEMANTIC KEYWORD MATCHING (10 points)
+        if max_score < 15.0:
+            max_score = max(
+                max_score,
+                self._score_semantic_title_matches(
+                    user_job_input, ai_job_titles, job_title
+                ),
+            )
+
+        return max_score
+
+    def _score_exact_ai_title_matches(
+        self, user_roles: list, user_job_input: str, ai_job_titles: list
+    ) -> float:
+        """Score exact matches in AI job titles (35 points)"""
+        if not ai_job_titles:
+            return 0.0
+
+        # Check user_roles first (processed/standardized)
+        for user_role in user_roles:
+            if not user_role:
+                continue
+            user_role_lower = user_role.lower()
+
+            for ai_title in ai_job_titles:
+                if ai_title and user_role_lower in ai_title.lower():
+                    return 35.0  # Perfect match
+
+        # Check user_job_input (verbatim user text)
+        if user_job_input:
+            user_input_lower = user_job_input.lower()
+
+            # Extract key terms from user input
+            key_terms = self._extract_job_keywords(user_input_lower)
+
+            for ai_title in ai_job_titles:
+                if not ai_title:
+                    continue
+                ai_title_lower = ai_title.lower()
+
+                # Check if multiple key terms match
+                matching_terms = sum(1 for term in key_terms if term in ai_title_lower)
+                if matching_terms >= 2:  # At least 2 key terms match
+                    return 35.0
+                elif (
+                    matching_terms == 1 and len(key_terms) == 1
+                ):  # Single term perfect match
+                    return 35.0
+
+        return 0.0
+
+    def _score_fuzzy_ai_title_matches(
+        self, user_roles: list, user_job_input: str, ai_job_titles: list
+    ) -> float:
+        """Score fuzzy matches in AI job titles (25-30 points)"""
+        if not ai_job_titles:
+            return 0.0
+
+        max_score = 0.0
+
+        # Check user_roles with fuzzy matching (enhanced for sales)
+        for user_role in user_roles:
+            if not user_role:
+                continue
+            user_role_lower = user_role.lower()
+
+            for ai_title in ai_job_titles:
+                if not ai_title:
+                    continue
+                ai_title_lower = ai_title.lower()
+
+                # Special handling for sales-related titles
+                if "sales" in user_role_lower and "sales" in ai_title_lower:
+                    # Sales Manager vs Sales Executive should score highly
+                    sales_terms = [
+                        "manager",
+                        "executive",
+                        "supervisor",
+                        "representative",
+                        "associate",
+                        "specialist",
+                        "coordinator",
+                        "lead",
+                    ]
+                    user_has_sales_term = any(
+                        term in user_role_lower for term in sales_terms
+                    )
+                    job_has_sales_term = any(
+                        term in ai_title_lower for term in sales_terms
+                    )
+
+                    if user_has_sales_term and job_has_sales_term:
+                        max_score = max(
+                            max_score, 32.0
+                        )  # High score for sales variations
+                    elif "sales" in user_role_lower and "sales" in ai_title_lower:
+                        max_score = max(
+                            max_score, 30.0
+                        )  # Good score for any sales match
+
+                # Regular fuzzy matching
+                similarity = SequenceMatcher(
+                    None, user_role_lower, ai_title_lower
+                ).ratio()
+                if similarity > 0.85:
+                    max_score = max(max_score, 30.0)
+                elif similarity > 0.7:
+                    max_score = max(max_score, 25.0)
+                elif similarity > 0.6 and "sales" in user_role_lower:
+                    # More lenient for sales roles
+                    max_score = max(max_score, 22.0)
+
+        # Check user_job_input with fuzzy matching
+        if user_job_input and max_score < 30.0:
+            key_terms = self._extract_job_keywords(user_job_input.lower())
+
+            for ai_title in ai_job_titles:
+                if not ai_title:
+                    continue
+                ai_title_lower = ai_title.lower()
+
+                # Calculate fuzzy match for each key term
+                for term in key_terms:
+                    similarity = SequenceMatcher(None, term, ai_title_lower).ratio()
+                    if similarity > 0.8:
+                        max_score = max(max_score, 28.0)
+                    elif similarity > 0.6:
+                        max_score = max(max_score, 22.0)
+
+        return max_score
+
+    def _score_category_title_matches(
+        self, user_categories: list, ai_job_titles: list, job_title: str
+    ) -> float:
+        """Score category-level matches (20 points)"""
+        if not user_categories:
+            return 0.0
+
+        # Category to job title mappings
+        category_keywords = {
+            "technology": [
+                "developer",
+                "engineer",
+                "programmer",
+                "software",
+                "tech",
+                "it",
+                "data",
+                "analyst",
+                "devops",
+                "qa",
+            ],
+            "healthcare": [
+                "nurse",
+                "doctor",
+                "medical",
+                "health",
+                "clinical",
+                "pharmacy",
+                "therapy",
+            ],
+            "finance": [
+                "financial",
+                "accounting",
+                "analyst",
+                "banker",
+                "investment",
+                "audit",
+                "controller",
+            ],
+            "marketing": [
+                "marketing",
+                "digital",
+                "social media",
+                "content",
+                "brand",
+                "campaign",
+                "seo",
+            ],
+            "sales": [
+                "sales",
+                "business development",
+                "account",
+                "relationship",
+                "revenue",
+            ],
+            "design": ["designer", "ui", "ux", "graphic", "creative", "visual", "art"],
+            "education": [
+                "teacher",
+                "instructor",
+                "professor",
+                "tutor",
+                "education",
+                "training",
+            ],
+            "operations": [
+                "operations",
+                "logistics",
+                "supply chain",
+                "process",
+                "coordinator",
+            ],
+            "human resources": [
+                "hr",
+                "human resources",
+                "recruiter",
+                "talent",
+                "people",
+            ],
+            "customer service": [
+                "customer",
+                "support",
+                "service",
+                "help desk",
+                "call center",
+            ],
+        }
+
+        for category in user_categories:
+            if not category:
+                continue
+            category_lower = category.lower()
+
+            keywords = category_keywords.get(category_lower, [category_lower])
+
+            # Check AI job titles
+            for ai_title in ai_job_titles:
+                if ai_title and any(
+                    keyword in ai_title.lower() for keyword in keywords
+                ):
+                    return 20.0
+
+            # Check original job title
+            if any(keyword in job_title for keyword in keywords):
+                return 20.0
+
+        return 0.0
+
+    def _score_original_title_matches(
+        self, user_roles: list, user_job_input: str, job_title: str
+    ) -> float:
+        """Score matches in original job title (15 points)"""
+        if not job_title:
+            return 0.0
+
+        # Check user_roles
+        for user_role in user_roles:
+            if user_role and user_role.lower() in job_title:
+                return 15.0
+
+        # Check user_job_input keywords
+        if user_job_input:
+            key_terms = self._extract_job_keywords(user_job_input.lower())
+            matching_terms = sum(1 for term in key_terms if term in job_title)
+
+            if matching_terms >= 2:
+                return 15.0
+            elif matching_terms == 1 and len(key_terms) == 1:
+                return 15.0
+
+        return 0.0
+
+    def _score_semantic_title_matches(
+        self, user_job_input: str, ai_job_titles: list, job_title: str
+    ) -> float:
+        """Score semantic keyword matches (10 points)"""
+        if not user_job_input:
+            return 0.0
+
+        # Extract semantic keywords from user input
+        semantic_keywords = self._extract_semantic_keywords(user_job_input.lower())
+
+        if not semantic_keywords:
+            return 0.0
+
+        # Check AI job titles
+        for ai_title in ai_job_titles:
+            if ai_title and any(
+                keyword in ai_title.lower() for keyword in semantic_keywords
+            ):
+                return 10.0
+
+        # Check original job title
+        if any(keyword in job_title for keyword in semantic_keywords):
+            return 10.0
+
+        return 0.0
+
+    def _extract_job_keywords(self, text: str) -> list:
+        """Extract key job-related terms from user input"""
+        # Remove common words and extract meaningful terms
+        stop_words = {
+            "i",
+            "want",
+            "to",
+            "be",
+            "a",
+            "an",
+            "the",
+            "as",
+            "for",
+            "in",
+            "at",
+            "with",
+            "and",
+            "or",
+        }
+
+        # Split and clean
+        words = text.replace(",", " ").replace(".", " ").split()
+        keywords = []
+
+        for word in words:
+            word = word.strip().lower()
+            if len(word) > 2 and word not in stop_words:
+                keywords.append(word)
+
+        # Also extract multi-word phrases
+        phrases = []
+        if "software developer" in text:
+            phrases.append("software developer")
+        if "data analyst" in text:
+            phrases.append("data analyst")
+        if "project manager" in text:
+            phrases.append("project manager")
+        if "business analyst" in text:
+            phrases.append("business analyst")
+
+        return phrases + keywords
+
+    def _extract_semantic_keywords(self, text: str) -> list:
+        """Extract semantic keywords that indicate job intent"""
+        semantic_map = {
+            "python": ["python", "django", "flask"],
+            "javascript": ["javascript", "js", "react", "vue", "angular", "node"],
+            "data": ["data", "analytics", "analysis", "science", "scientist"],
+            "web": ["web", "website", "frontend", "backend", "fullstack"],
+            "mobile": ["mobile", "android", "ios", "app", "application"],
+            "design": ["design", "ui", "ux", "graphic", "visual"],
+            "management": ["manager", "management", "lead", "supervisor"],
+            "sales": ["sales", "selling", "business development"],
+            "marketing": ["marketing", "digital marketing", "social media"],
+        }
+
+        keywords = []
+        for category, terms in semantic_map.items():
+            if any(term in text for term in terms):
+                keywords.extend(terms)
+
+        return list(set(keywords))  # Remove duplicates
+
+    def _score_ai_job_function_match(self, user_prefs: dict, job: dict) -> float:
+        """Match based on AI job function (Sales, Engineering, etc.)"""
+        user_categories = user_prefs.get("job_categories", [])
+        user_roles = user_prefs.get("job_roles", [])
+
+        if not user_categories and not user_roles:
+            return 0.0
+
+        ai_job_function = job.get("ai_job_function", "") or ""
+        if not ai_job_function:
+            return 0.0
+
+        # Handle case where ai_job_function might be a list
+        if isinstance(ai_job_function, list):
+            ai_job_function = ai_job_function[0] if ai_job_function else ""
+
+        if not ai_job_function:
+            return 0.0
+
+        ai_function_lower = ai_job_function.lower()
+
+        # Check user categories first (highest priority)
+        for category in user_categories:
+            if category and category.lower() in ai_function_lower:
+                return 25.0
+
+        # Enhanced direct matching for data roles (second priority - 25 points)
+        if any(
+            "data" in role.lower() or "analyst" in role.lower() for role in user_roles
+        ):
+            if any(
+                keyword in ai_function_lower
+                for keyword in ["data", "analytics", "analyst", "intelligence"]
+            ):
+                return 25.0  # Full points for direct data match
+
+        # Check user roles for function keywords (third priority - 20 points)
+        function_keywords = {
+            "sales": ["sales", "business development", "account management"],
+            "engineering": ["engineer", "developer", "technical", "software"],
+            "marketing": ["marketing", "digital marketing", "content"],
+            "customer service": ["customer", "support", "service"],
+            "finance": ["finance", "accounting", "financial"],
+            "hr": ["hr", "human resources", "recruitment"],
+            "operations": ["operations", "logistics", "supply chain"],
+        }
+
+        for user_role in user_roles:
+            user_role_lower = user_role.lower()
+            for func, keywords in function_keywords.items():
+                if any(keyword in user_role_lower for keyword in keywords):
+                    if func in ai_function_lower:
+                        return 20.0
+
+        return 0.0
+
+    def _score_ai_industry_match(self, user_prefs: dict, job: dict) -> float:
+        """Match based on AI industry classification"""
+        user_industries = user_prefs.get("industry_preferences", [])
+        user_roles = user_prefs.get("job_roles", [])
+
+        ai_industries = job.get("ai_industry", []) or []
+        if not ai_industries:
+            return 0.0
+
+        # Direct industry preference match
+        if user_industries:
+            for user_industry in user_industries:
+                for ai_industry in ai_industries:
+                    if (
+                        user_industry
+                        and ai_industry
+                        and user_industry.lower() in ai_industry.lower()
+                    ):
+                        return 20.0
+
+        # Infer industry from user roles with enhanced sales matching
+        role_industry_map = {
+            "tech": ["technology", "software", "information technology"],
+            "finance": ["finance", "financial services", "banking"],
+            "healthcare": ["healthcare", "medical", "pharmaceutical"],
+            "education": ["education", "academic", "training"],
+            "retail": ["retail", "e-commerce", "consumer goods"],
+            "media": ["media", "entertainment", "advertising"],
+            "sales": [
+                "sales",
+                "retail",
+                "finance",
+                "insurance",
+                "real estate",
+                "pharmaceutical",
+                "healthcare",
+                "consulting",
+                "business",
+            ],
+        }
+
+        # Special handling for sales roles - they work across many industries
+        sales_keywords = ["sales", "account", "business development", "key account"]
+        is_sales_user = any(
+            keyword in role.lower() for role in user_roles for keyword in sales_keywords
+        )
+
+        if is_sales_user:
+            # Sales roles are valuable across many industries
+            sales_friendly_industries = [
+                "healthcare",
+                "medical",
+                "pharmaceutical",
+                "finance",
+                "financial",
+                "insurance",
+                "retail",
+                "real estate",
+                "consulting",
+                "business",
+                "technology",
+                "software",
+                "manufacturing",
+                "automotive",
+            ]
+            for ai_industry in ai_industries:
+                ai_industry_lower = ai_industry.lower()
+                if any(
+                    industry in ai_industry_lower
+                    for industry in sales_friendly_industries
+                ):
+                    return 15.0  # Good match for sales in relevant industries
+                elif "sales" in ai_industry_lower:
+                    return 20.0  # Perfect match for sales industry
+
+        for user_role in user_roles:
+            user_role_lower = user_role.lower()
+            for role_key, industries in role_industry_map.items():
+                if role_key in user_role_lower:
+                    for ai_industry in ai_industries:
+                        if any(ind in ai_industry.lower() for ind in industries):
+                            return 15.0
+
+        # Fallback: any industry with sales component gets some points
+        for ai_industry in ai_industries:
+            if "sales" in ai_industry.lower():
+                return 10.0
+
+        return 0.0
+
+    def _score_job_titles(self, user_prefs: Dict, job: Dict) -> float:
+        """Score exact job title matches"""
+        user_roles = user_prefs.get("job_roles", [])
+        if not user_roles:
+            return 0.0
+
+        # Get job title fields
+        job_title = (job.get("title", "") or "").lower()
+
+        # Handle ai_job_title which might be a list
+        ai_job_title_raw = job.get("ai_job_title", "") or ""
+        if isinstance(ai_job_title_raw, list):
+            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
+        else:
+            ai_job_title = ai_job_title_raw.lower()
+
+        max_score = 0.0
+        for user_role in user_roles:
+            user_role_lower = user_role.lower()
+
+            # Exact matches
+            if user_role_lower in job_title or user_role_lower in ai_job_title:
+                max_score = max(max_score, 40.0)
+            # Partial matches
+            elif any(word in job_title for word in user_role_lower.split()):
+                max_score = max(max_score, 25.0)
+            elif any(word in ai_job_title for word in user_role_lower.split()):
+                max_score = max(max_score, 20.0)
+
+        return max_score
+
+    def _score_fuzzy_titles(self, user_prefs: Dict, job: Dict) -> float:
+        """Score fuzzy job title matches using string similarity"""
+        user_roles = user_prefs.get("job_roles", [])
+        if not user_roles:
+            return 0.0
+
+        job_title = (job.get("title", "") or "").lower()
+
+        # Handle ai_job_title which might be a list
+        ai_job_title_raw = job.get("ai_job_title", "") or ""
+        if isinstance(ai_job_title_raw, list):
+            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
+        else:
+            ai_job_title = ai_job_title_raw.lower()
+
+        max_score = 0.0
+        for user_role in user_roles:
+            user_role_lower = user_role.lower()
+
+            # Calculate similarity ratios
+            title_similarity = SequenceMatcher(None, user_role_lower, job_title).ratio()
+            ai_title_similarity = SequenceMatcher(
+                None, user_role_lower, ai_job_title
+            ).ratio()
+
+            # Convert similarity to score (threshold of 0.6 for relevance)
+            best_similarity = max(title_similarity, ai_title_similarity)
+            if best_similarity >= 0.6:
+                fuzzy_score = (
+                    (best_similarity - 0.6) / 0.4 * 30.0
+                )  # Scale to 0-30 points
+                max_score = max(max_score, fuzzy_score)
+
+        return max_score
+
+    def _score_semantic_clusters(self, user_prefs: Dict, job: Dict) -> float:
+        """Score semantic cluster matches"""
+        user_roles = user_prefs.get("job_roles", [])
+        if not user_roles:
+            return 0.0
+
+        job_title = (job.get("title", "") or "").lower()
+
+        # Handle ai_job_title which might be a list
+        ai_job_title_raw = job.get("ai_job_title", "") or ""
+        if isinstance(ai_job_title_raw, list):
+            ai_job_title = ai_job_title_raw[0].lower() if ai_job_title_raw else ""
+        else:
+            ai_job_title = ai_job_title_raw.lower()
+
+        job_description = (job.get("description", "") or "").lower()
+
+        # Find user's clusters
+        user_clusters = set()
+        for user_role in user_roles:
+            user_role_lower = user_role.lower()
+            for cluster_name, cluster_terms in self.JOB_CLUSTERS.items():
+                if any(term in user_role_lower for term in cluster_terms):
+                    user_clusters.add(cluster_name)
+
+        if not user_clusters:
+            return 0.0
+
+        # Check if job matches any user clusters
+        max_score = 0.0
+        for cluster_name in user_clusters:
+            cluster_terms = self.JOB_CLUSTERS[cluster_name]
+
+            # Check title matches
+            title_matches = sum(
+                1 for term in cluster_terms if term in job_title or term in ai_job_title
+            )
+
+            # Check description matches (lower weight)
+            desc_matches = sum(1 for term in cluster_terms if term in job_description)
+
+            if title_matches > 0:
+                cluster_score = min(title_matches * 15.0, 25.0)  # Up to 25 points
+                max_score = max(max_score, cluster_score)
+            elif desc_matches > 0:
+                cluster_score = min(desc_matches * 5.0, 15.0)  # Up to 15 points
+                max_score = max(max_score, cluster_score)
+
+        return max_score
+
+    def _score_skills_match(self, user_prefs: Dict, job: Dict) -> float:
+        """Enhanced AI-powered skills matching with required/preferred distinction"""
+        user_technical_skills = user_prefs.get("technical_skills", []) or []
+        user_soft_skills = user_prefs.get("soft_skills", []) or []
+
+        if not user_technical_skills and not user_soft_skills:
+            return 0.0
+
+        # Get AI-enhanced skills data
+        ai_required_skills = job.get("ai_required_skills", []) or []
+        ai_preferred_skills = job.get("ai_preferred_skills", []) or []
+
+        # Legacy fields for backward compatibility
+        job_description = (job.get("description", "") or "").lower()
+        ai_skills_raw = job.get("ai_skills_required", "") or ""
+        if isinstance(ai_skills_raw, list):
+            ai_skills_legacy = ai_skills_raw
+        else:
+            ai_skills_legacy = [ai_skills_raw] if ai_skills_raw else []
+
+        total_score = 0.0
+
+        # Score technical skills matching
+        if user_technical_skills:
+            tech_score = self._score_technical_skills_match(
+                user_technical_skills,
+                ai_required_skills,
+                ai_preferred_skills,
+                ai_skills_legacy,
+                job_description,
+            )
+            total_score += tech_score
+
+        # Score soft skills matching (lower weight)
+        if user_soft_skills:
+            soft_score = self._score_soft_skills_match(
+                user_soft_skills, job_description
+            )
+            total_score += soft_score
+
+        return min(total_score, 20.0)  # Cap at 20 points
+
+    def _score_technical_skills_match(
+        self,
+        user_skills: list,
+        ai_required: list,
+        ai_preferred: list,
+        ai_legacy: list,
+        job_description: str,
+    ) -> float:
+        """Score technical skills with required/preferred distinction"""
+        if not user_skills:
+            return 0.0
+
+        required_matches = 0
+        preferred_matches = 0
+        legacy_matches = 0
+        description_matches = 0
+
+        total_user_skills = len(user_skills)
+
+        for user_skill in user_skills:
+            user_skill_lower = user_skill.lower().strip()
+
+            # Check required skills (highest priority)
+            if self._skill_matches_list(user_skill_lower, ai_required):
+                required_matches += 1
+                continue
+
+            # Check preferred skills
+            if self._skill_matches_list(user_skill_lower, ai_preferred):
+                preferred_matches += 1
+                continue
+
+            # Check legacy AI skills
+            if self._skill_matches_list(user_skill_lower, ai_legacy):
+                legacy_matches += 1
+                continue
+
+            # Check job description with synonyms
+            if self._skill_matches_description(user_skill_lower, job_description):
+                description_matches += 1
+
+        # Calculate weighted score
+        score = 0.0
+
+        # Required skills: 3 points each (critical)
+        if ai_required:
+            required_ratio = required_matches / len(ai_required)
+            score += required_ratio * 12.0  # Up to 12 points
+
+        # Preferred skills: 1.5 points each (nice to have)
+        if ai_preferred:
+            preferred_ratio = preferred_matches / len(ai_preferred)
+            score += preferred_ratio * 6.0  # Up to 6 points
+
+        # Legacy and description matches: 1 point each
+        if total_user_skills > 0:
+            other_ratio = (legacy_matches + description_matches) / total_user_skills
+            score += other_ratio * 4.0  # Up to 4 points
+
+        return score
+
+    def _score_soft_skills_match(
+        self, user_soft_skills: list, job_description: str
+    ) -> float:
+        """Score soft skills matching (lower weight than technical)"""
+        if not user_soft_skills:
+            return 0.0
+
+        soft_skill_keywords = {
+            "communication": [
+                "communication",
+                "communicate",
+                "verbal",
+                "written",
+                "presentation",
+            ],
+            "leadership": [
+                "leadership",
+                "lead",
+                "manage",
+                "mentor",
+                "guide",
+                "supervise",
+            ],
+            "teamwork": ["teamwork", "collaboration", "team player", "cooperative"],
+            "problem solving": [
+                "problem solving",
+                "analytical",
+                "critical thinking",
+                "troubleshoot",
+            ],
+            "creativity": ["creative", "innovation", "design thinking", "artistic"],
+            "adaptability": ["adaptable", "flexible", "agile", "change management"],
+            "time management": [
+                "time management",
+                "organization",
+                "prioritization",
+                "deadline",
+            ],
+        }
+
+        matched_soft_skills = 0
+
+        for user_skill in user_soft_skills:
+            user_skill_lower = user_skill.lower().strip()
+
+            # Direct match
+            if user_skill_lower in job_description:
+                matched_soft_skills += 1
+                continue
+
+            # Keyword matching
+            for skill_category, keywords in soft_skill_keywords.items():
+                if user_skill_lower in keywords or any(
+                    keyword in user_skill_lower for keyword in keywords
+                ):
+                    if any(keyword in job_description for keyword in keywords):
+                        matched_soft_skills += 1
+                        break
+
+        if len(user_soft_skills) > 0:
+            soft_ratio = matched_soft_skills / len(user_soft_skills)
+            return soft_ratio * 3.0  # Up to 3 points for soft skills
+
+        return 0.0
+
+    def _skill_matches_list(self, user_skill: str, skill_list: list) -> bool:
+        """Check if user skill matches any skill in the list with synonyms"""
+        if not skill_list:
+            return False
+
+        for job_skill in skill_list:
+            job_skill_lower = job_skill.lower().strip()
+
+            # Direct match
+            if user_skill == job_skill_lower or user_skill in job_skill_lower:
+                return True
+
+            # Synonym matching
+            if self._are_skills_synonymous(user_skill, job_skill_lower):
+                return True
+
+        return False
+
+    def _skill_matches_description(self, user_skill: str, job_description: str) -> bool:
+        """Check if user skill matches job description with synonyms"""
+        # Direct match
+        if user_skill in job_description:
+            return True
+
+        # Synonym matching with existing SKILL_SYNONYMS
+        for skill_group, synonyms in self.SKILL_SYNONYMS.items():
+            if user_skill in synonyms:
+                if any(syn in job_description for syn in synonyms):
+                    return True
+
+        return False
+
+    def _are_skills_synonymous(self, skill1: str, skill2: str) -> bool:
+        """Check if two skills are synonymous"""
+        # Enhanced skill synonyms for better matching
+        enhanced_synonyms = {
+            "javascript": ["js", "javascript", "ecmascript", "node.js", "nodejs"],
+            "python": ["python", "py", "python3", "django", "flask"],
+            "react": ["react", "reactjs", "react.js", "react native"],
+            "angular": ["angular", "angularjs", "angular.js"],
+            "vue": ["vue", "vuejs", "vue.js"],
+            "css": ["css", "css3", "stylesheets", "styling"],
+            "html": ["html", "html5", "markup"],
+            "sql": ["sql", "mysql", "postgresql", "database"],
+            "aws": ["aws", "amazon web services", "cloud"],
+            "docker": ["docker", "containerization", "containers"],
+            "kubernetes": ["kubernetes", "k8s", "orchestration"],
+            "git": ["git", "version control", "github", "gitlab"],
+        }
+
+        # Check if skills are in the same synonym group
+        for synonyms in enhanced_synonyms.values():
+            if skill1 in synonyms and skill2 in synonyms:
+                return True
+
+        # Check existing SKILL_SYNONYMS
+        for synonyms in self.SKILL_SYNONYMS.values():
+            if skill1 in synonyms and skill2 in synonyms:
+                return True
+
+        return False
+
+    def _score_work_arrangement(self, user_prefs: Dict, job: Dict) -> float:
+        """
+        Enhanced AI-powered work arrangement matching (20 points)
+
+        Prioritizes AI fields over text-based detection:
+        - ai_work_arrangement (highest priority)
+        - ai_remote_allowed (boolean flag)
+        - Legacy text-based detection (fallback)
+        """
+        user_arrangements = user_prefs.get("work_arrangements", []) or []
+
+        # Handle different data types (list, set, or single string)
+        if isinstance(user_arrangements, set):
+            user_arrangements = list(user_arrangements)
+        elif isinstance(user_arrangements, str):
+            # Handle PostgreSQL set format like '{hybrid}' or '{remote,hybrid}'
+            if user_arrangements.startswith("{") and user_arrangements.endswith("}"):
+                # Remove braces and split by comma
+                clean_str = user_arrangements.strip("{}")
+                if clean_str:
+                    user_arrangements = [item.strip() for item in clean_str.split(",")]
+                else:
+                    user_arrangements = []
+            else:
+                user_arrangements = [user_arrangements]
+        elif not isinstance(user_arrangements, list):
+            user_arrangements = []
+
+        if not user_arrangements:
+            return 0.0
+
+        # Get AI-enhanced work arrangement data (highest priority)
+        ai_work_arrangement = (job.get("ai_work_arrangement", "") or "").lower()
+        ai_remote_allowed = job.get("ai_remote_allowed", False)
+
+        # Legacy fields for backward compatibility (fallback)
+        job_title = (job.get("title", "") or "").lower()
+        job_description = (job.get("description", "") or "").lower()
+        location = (job.get("location", "") or "").lower()
+        is_remote = job.get("is_remote", False)
+
+        max_score = 0.0
+
+        # Check if user is flexible/open to any arrangement
+        user_is_flexible = any(
+            arr.lower() in ["hybrid", "flexible", "any", "open"]
+            for arr in user_arrangements
+        )
+
+        for arrangement in user_arrangements:
+            arrangement_lower = arrangement.lower()
+
+            # FLEXIBLE/HYBRID users are open to ANY work arrangement
+            if arrangement_lower in ["hybrid", "flexible", "any", "open"]:
+                # Give high score for any job with clear work arrangement
+                if ai_work_arrangement:
+                    max_score = max(
+                        max_score, 18.0
+                    )  # High score for any clear arrangement
+                elif any([ai_remote_allowed, is_remote]):
+                    max_score = max(max_score, 16.0)  # Remote jobs
+                else:
+                    max_score = max(max_score, 14.0)  # Default on-site assumption
+
+                # Also check specific arrangements for even higher scores
+                if "remote" in ai_work_arrangement or ai_remote_allowed:
+                    max_score = max(max_score, 20.0)  # Perfect for remote
+                elif "hybrid" in ai_work_arrangement:
+                    max_score = max(max_score, 20.0)  # Perfect for hybrid
+                elif (
+                    "on-site" in ai_work_arrangement or "onsite" in ai_work_arrangement
+                ):
+                    max_score = max(max_score, 20.0)  # Perfect for on-site
+
+            elif arrangement_lower == "remote":
+                score = self._score_remote_arrangement(
+                    ai_work_arrangement,
+                    ai_remote_allowed,
+                    is_remote,
+                    job_title,
+                    job_description,
+                    location,
+                )
+                max_score = max(max_score, score)
+
+            elif arrangement_lower in ["on-site", "onsite", "office"]:
+                score = self._score_onsite_arrangement(
+                    ai_work_arrangement,
+                    ai_remote_allowed,
+                    is_remote,
+                    job_title,
+                    job_description,
+                    location,
+                )
+                max_score = max(max_score, score)
+
+        return max_score
+
+    def _score_remote_arrangement(
+        self,
+        ai_work_arrangement: str,
+        ai_remote_allowed: bool,
+        is_remote: bool,
+        job_title: str,
+        job_description: str,
+        location: str,
+    ) -> float:
+        """Score remote work arrangement matching"""
+        # Perfect AI match (20 points)
+        if "remote" in ai_work_arrangement:
+            return 20.0
+
+        # AI explicitly allows remote (20 points)
+        if ai_remote_allowed:
+            return 20.0
+
+        # Legacy remote indicators (18 points)
+        if is_remote:
+            return 18.0
+
+        # Text-based remote indicators (weighted by reliability)
+        remote_indicators = {
+            "100% remote": 17.0,
+            "fully remote": 17.0,
+            "work from home": 16.0,
+            "remote work": 16.0,
+            "remote position": 16.0,
+            "remote job": 16.0,
+            "work remotely": 15.0,
+            "remote": 14.0,
+        }
+
+        all_text = f"{job_title} {job_description} {location}"
+        for indicator, score in remote_indicators.items():
+            if indicator in all_text:
+                return score
+
+        return 0.0
+
+    def _score_hybrid_arrangement(
+        self,
+        ai_work_arrangement: str,
+        job_title: str,
+        job_description: str,
+        location: str,
+    ) -> float:
+        """Score hybrid work arrangement matching"""
+        # Perfect AI match (20 points)
+        if "hybrid" in ai_work_arrangement:
+            return 20.0
+
+        # Text-based hybrid indicators
+        hybrid_indicators = {
+            "hybrid work": 18.0,
+            "hybrid model": 18.0,
+            "hybrid arrangement": 18.0,
+            "flexible work": 17.0,
+            "work from home some days": 17.0,
+            "part remote": 16.0,
+            "flexible schedule": 15.0,
+            "hybrid": 14.0,
+            "flexible": 12.0,
+        }
+
+        all_text = f"{job_title} {job_description} {location}"
+        for indicator, score in hybrid_indicators.items():
+            if indicator in all_text:
+                return score
+
+        return 0.0
+
+    def _score_onsite_arrangement(
+        self,
+        ai_work_arrangement: str,
+        ai_remote_allowed: bool,
+        is_remote: bool,
+        job_title: str,
+        job_description: str,
+        location: str,
+    ) -> float:
+        """Score on-site work arrangement matching"""
+        # Perfect AI match (20 points)
+        if "on-site" in ai_work_arrangement or "onsite" in ai_work_arrangement:
+            return 20.0
+
+        # Explicit on-site indicators
+        onsite_indicators = [
+            "on-site",
+            "onsite",
+            "office based",
+            "in-office",
+            "office work",
+            "office environment",
+            "physical presence required",
+        ]
+
+        all_text = f"{job_title} {job_description} {location}"
+        for indicator in onsite_indicators:
+            if indicator in all_text:
+                return 17.0
+
+        # Default assumption: if no remote indicators, likely on-site
+        if not (
+            ai_remote_allowed
+            or is_remote
+            or "remote" in all_text
+            or "hybrid" in all_text
+        ):
+            return 14.0  # Moderate score as on-site is often default
+
+        return 0.0
+
+    def _score_salary_match(self, user_prefs: Dict, job: Dict) -> float:
+        """
+        Enhanced intelligent salary matching with currency conversion (20 points)
+
+        Features:
+        - AI-enhanced salary fields prioritized
+        - Currency conversion (NGN ↔ USD ↔ EUR ↔ GBP)
+        - Range overlap calculation
+        - Negotiability flexibility
+        - Salary period normalization
+        """
+        user_currency = user_prefs.get("salary_currency")
+        user_min = user_prefs.get("salary_min")
+        user_max = user_prefs.get("salary_max")
+        salary_negotiable = user_prefs.get("salary_negotiable", True)
+
+        # If user has no salary preferences, return neutral score
+        if not any([user_currency, user_min, user_max]):
+            return 0.0
+
+        # Get job salary data (prefer AI-enhanced fields)
+        job_currency = job.get("ai_salary_currency") or job.get("salary_currency")
+        job_min = job.get("ai_salary_min") or job.get("salary_min")
+        job_max = job.get("ai_salary_max") or job.get("salary_max")
+
+        # Check if job has any salary data
+        job_has_salary = any([job_currency, job_min, job_max])
+
+        # IMPORTANT: If user wants salary info but job has none, give partial points
+        # This prevents penalizing the majority of jobs that don't include salary
+        if not job_has_salary:
+            # Give 10/20 points for jobs without salary data (improved from 8)
+            return 10.0
+
+        # Convert to numbers if they're strings
+        try:
+            if job_min and isinstance(job_min, str):
+                job_min = float(job_min.replace(",", ""))
+            if job_max and isinstance(job_max, str):
+                job_max = float(job_max.replace(",", ""))
+            if user_min and isinstance(user_min, str):
+                user_min = float(str(user_min).replace(",", ""))
+            if user_max and isinstance(user_max, str):
+                user_max = float(str(user_max).replace(",", ""))
+        except (ValueError, AttributeError):
+            pass
+
+        score = 0.0
+
+        # Currency matching with intelligent conversion
+        if user_currency and job_currency:
+            currency_score = self._score_currency_match(user_currency, job_currency)
+            score += currency_score
+
+            # Apply currency conversion if needed
+            if currency_score > 0 and currency_score < 4.0:  # Partial currency match
+                conversion_factor = self._get_currency_conversion_factor(
+                    job_currency, user_currency
+                )
+                if conversion_factor and job_min:
+                    job_min = job_min * conversion_factor
+                if conversion_factor and job_max:
+                    job_max = job_max * conversion_factor
+
+        # Salary range matching with flexibility
+        if user_min or user_max:
+            range_score = self._score_salary_range_match(
+                user_min, user_max, job_min, job_max, salary_negotiable
+            )
+            score += range_score
+
+        return min(score, 20.0)  # Cap at 20 points
+
+    def _score_currency_match(self, user_currency: str, job_currency: str) -> float:
+        """Score currency matching with intelligent equivalents"""
+        if not user_currency or not job_currency:
+            return 0.0
+
+        user_curr = user_currency.upper().strip()
+        job_curr = job_currency.upper().strip()
+
+        # Perfect match
+        if user_curr == job_curr:
+            return 4.0
+
+        # Currency equivalents and common variations
+        currency_groups = {
+            "NGN": ["NGN", "NAIRA", "₦", "NIGERIAN NAIRA"],
+            "USD": ["USD", "DOLLAR", "$", "US DOLLAR", "AMERICAN DOLLAR"],
+            "EUR": ["EUR", "EURO", "€", "EUROPEAN EURO"],
+            "GBP": ["GBP", "POUND", "£", "BRITISH POUND", "STERLING"],
+            "CAD": ["CAD", "CANADIAN DOLLAR", "C$"],
+            "AUD": ["AUD", "AUSTRALIAN DOLLAR", "A$"],
+        }
+
+        user_group = None
+        job_group = None
+
+        for currency, variations in currency_groups.items():
+            if user_curr in variations:
+                user_group = currency
+            if job_curr in variations:
+                job_group = currency
+
+        if user_group and job_group:
+            if user_group == job_group:
+                return 4.0
+
+            # Related currencies (easier conversion)
+            related_pairs = [
+                ("USD", "CAD"),
+                ("USD", "AUD"),
+                ("GBP", "EUR"),
+                ("NGN", "USD"),
+                ("NGN", "GBP"),
+                ("NGN", "EUR"),
+            ]
+
+            for curr1, curr2 in related_pairs:
+                if (user_group == curr1 and job_group == curr2) or (
+                    user_group == curr2 and job_group == curr1
+                ):
+                    return 2.0
+
+        return 0.0
+
+    def _get_currency_conversion_factor(
+        self, from_currency: str, to_currency: str
+    ) -> float:
+        """Get approximate currency conversion factor (simplified)"""
+        # Simplified conversion rates (should be updated with real-time rates in production)
+        conversion_rates = {
+            ("USD", "NGN"): 750.0,
+            ("EUR", "NGN"): 820.0,
+            ("GBP", "NGN"): 950.0,
+            ("USD", "EUR"): 0.92,
+            ("USD", "GBP"): 0.79,
+            ("EUR", "GBP"): 0.86,
+        }
+
+        from_curr = from_currency.upper().strip()
+        to_curr = to_currency.upper().strip()
+
+        # Direct conversion
+        if (from_curr, to_curr) in conversion_rates:
+            return conversion_rates[(from_curr, to_curr)]
+
+        # Reverse conversion
+        if (to_curr, from_curr) in conversion_rates:
+            return 1.0 / conversion_rates[(to_curr, from_curr)]
+
+        return None
+
+    def _score_salary_range_match(
+        self,
+        user_min: float,
+        user_max: float,
+        job_min: float,
+        job_max: float,
+        salary_negotiable: bool,
+    ) -> float:
+        """Score salary range matching with flexibility"""
+        if not any([user_min, user_max, job_min, job_max]):
+            return 0.0
+
+        score = 0.0
+
+        # Perfect range overlap
+        if user_min and user_max and job_min and job_max:
+            if user_min <= job_max and user_max >= job_min:
+                overlap_ratio = self._calculate_range_overlap(
+                    user_min, user_max, job_min, job_max
+                )
+                score += overlap_ratio * 6.0  # Up to 6 points for perfect overlap
+
+        # Minimum salary requirements
+        if user_min and job_max:
+            if job_max >= user_min:
+                score += 3.0
+            elif salary_negotiable and job_max >= (
+                user_min * 0.8
+            ):  # 20% flexibility if negotiable
+                score += 2.0
+
+        # Maximum budget constraints
+        if user_max and job_min:
+            if job_min <= user_max:
+                score += 2.0
+            elif salary_negotiable and job_min <= (
+                user_max * 1.2
+            ):  # 20% flexibility if negotiable
+                score += 1.0
+
+        # Single-sided matches
+        if user_min and job_min and not (user_max and job_max):
+            if abs(user_min - job_min) / max(user_min, job_min) <= 0.2:  # Within 20%
+                score += 2.0
+
+        if user_max and job_max and not (user_min and job_min):
+            if abs(user_max - job_max) / max(user_max, job_max) <= 0.2:  # Within 20%
+                score += 2.0
+
+        return score
+
+    def _calculate_range_overlap(
+        self, user_min: float, user_max: float, job_min: float, job_max: float
+    ) -> float:
+        """Calculate the overlap ratio between two salary ranges"""
+        overlap_start = max(user_min, job_min)
+        overlap_end = min(user_max, job_max)
+
+        if overlap_start >= overlap_end:
+            return 0.0
+
+        overlap_size = overlap_end - overlap_start
+        user_range_size = user_max - user_min
+        job_range_size = job_max - job_min
+
+        # Calculate overlap as percentage of the smaller range
+        smaller_range = min(user_range_size, job_range_size)
+        if smaller_range <= 0:
+            return 0.0
+
+        return min(overlap_size / smaller_range, 1.0)
+
+    def _score_contact_availability(self, job: Dict) -> float:
+        """Score jobs based on availability of contact information for CTA buttons"""
+        score = 0.0
+
+        # Check for job URL (highest priority for apply buttons)
+        job_url = job.get("job_url")
+        if job_url and job_url.strip():
+            score += 6.0  # 6 points for job URL
+
+        # Check for email contact
+        email = job.get("email") or job.get("ai_email")
+        if email and email.strip():
+            score += 3.0  # 3 points for email
+
+        # Check for WhatsApp contact (highest value for user engagement)
+        whatsapp = job.get("whatsapp_number") or job.get("ai_whatsapp_number")
+        if whatsapp and whatsapp.strip():
+            score += 4.0  # 4 points for WhatsApp
+
+        # Bonus for multiple contact methods
+        contact_methods = sum(
+            [
+                1 if job_url and job_url.strip() else 0,
+                1 if email and email.strip() else 0,
+                1 if whatsapp and whatsapp.strip() else 0,
+            ]
+        )
+
+        if contact_methods >= 2:
+            score += 2.0  # 2 bonus points for multiple contact methods
+
+        return min(score, 10.0)  # Cap at 10 points
+
+    def _score_experience_match(self, user_prefs: Dict, job: Dict) -> float:
+        """Enhanced AI-powered experience level matching"""
+        user_exp_level = user_prefs.get("experience_level")
+        user_years = user_prefs.get("years_of_experience")
+
+        if not user_exp_level and not user_years:
+            return 0.0
+
+        # Get AI-enhanced experience data
+        ai_job_level = job.get("ai_job_level", []) or []
+        ai_years_min = job.get("ai_years_experience_min")
+        ai_years_max = job.get("ai_years_experience_max")
+
+        # Legacy fields
+        job_description = (job.get("description", "") or "").lower()
+        ai_exp_raw = job.get("ai_experience_required", "") or ""
+        if isinstance(ai_exp_raw, list):
+            ai_exp_required = " ".join(ai_exp_raw).lower() if ai_exp_raw else ""
+        else:
+            ai_exp_required = ai_exp_raw.lower()
+
+        max_score = 0.0
+
+        # Experience level matching with AI enhancement
+        if user_exp_level:
+            level_score = self._score_experience_level_match(
+                user_exp_level, ai_job_level, job_description, ai_exp_required
+            )
+            max_score = max(max_score, level_score)
+
+        # Years of experience matching with AI enhancement
+        if user_years:
+            years_score = self._score_years_experience_match(
+                user_years, ai_years_min, ai_years_max, job_description, ai_exp_required
+            )
+            max_score = max(max_score, years_score)
+
+        return max_score
+
+    def _score_experience_level_match(
+        self,
+        user_level: str,
+        ai_job_level: list,
+        job_description: str,
+        ai_exp_required: str,
+    ) -> float:
+        """Score experience level matching with intelligent mapping"""
+        if not user_level:
+            return 0.0
+
+        user_level_lower = user_level.lower().strip()
+
+        # Experience level hierarchy and mappings
+        level_mappings = {
+            "entry": [
+                "entry",
+                "junior",
+                "graduate",
+                "trainee",
+                "intern",
+                "beginner",
+                "fresh",
+            ],
+            "junior": ["junior", "entry", "associate", "level 1", "i", "1"],
+            "mid": [
+                "mid",
+                "intermediate",
+                "senior",
+                "level 2",
+                "ii",
+                "2",
+                "experienced",
+            ],
+            "senior": ["senior", "lead", "principal", "level 3", "iii", "3", "expert"],
+            "lead": ["lead", "senior", "principal", "manager", "head", "chief"],
+            "principal": ["principal", "staff", "architect", "expert", "specialist"],
+            "executive": ["executive", "director", "vp", "vice president", "c-level"],
+        }
+
+        # Find user's level category
+        user_category = None
+        for category, variations in level_mappings.items():
+            if user_level_lower in variations:
+                user_category = category
+                break
+
+        if not user_category:
+            user_category = user_level_lower
+
+        # Check AI job levels first (highest priority)
+        if ai_job_level:
+            for job_level in ai_job_level:
+                job_level_lower = job_level.lower().strip()
+
+                # Direct match
+                if user_level_lower == job_level_lower:
+                    return 10.0
+
+                # Category match
+                job_category = None
+                for category, variations in level_mappings.items():
+                    if job_level_lower in variations:
+                        job_category = category
+                        break
+
+                if job_category and user_category:
+                    compatibility_score = self._calculate_level_compatibility(
+                        user_category, job_category
+                    )
+                    if compatibility_score > 0:
+                        return compatibility_score
+
+        # Fallback to text-based matching
+        all_text = f"{job_description} {ai_exp_required}"
+
+        # Direct text matches
+        if user_level_lower in all_text:
+            return 8.0
+
+        # Category-based text matching
+        if user_category in level_mappings:
+            for variation in level_mappings[user_category]:
+                if variation in all_text:
+                    return 6.0
+
+        return 0.0
+
+    def _calculate_level_compatibility(self, user_level: str, job_level: str) -> float:
+        """Calculate compatibility score between experience levels"""
+        # Experience level progression
+        level_hierarchy = [
+            "entry",
+            "junior",
+            "mid",
+            "senior",
+            "lead",
+            "principal",
+            "executive",
+        ]
+
+        try:
+            user_index = level_hierarchy.index(user_level)
+            job_index = level_hierarchy.index(job_level)
+        except ValueError:
+            return 0.0
+
+        # Perfect match
+        if user_index == job_index:
+            return 10.0
+
+        # Adjacent levels (good compatibility)
+        if abs(user_index - job_index) == 1:
+            return 8.0
+
+        # Two levels apart (acceptable)
+        if abs(user_index - job_index) == 2:
+            return 5.0
+
+        # User is overqualified (still acceptable for some roles)
+        if user_index > job_index and (user_index - job_index) <= 3:
+            return 3.0
+
+        # User is underqualified - be more lenient for entry-level users
+        if job_index > user_index:
+            gap = job_index - user_index
+            if user_index == 0:  # Entry-level user
+                if gap == 1:  # Entry -> Junior (very common)
+                    return 8.0  # Improved from 2.0
+                elif gap == 2:  # Entry -> Mid (still acceptable)
+                    return 6.0  # Improved from 2.0
+                elif gap == 3:  # Entry -> Senior (stretch but possible)
+                    return 4.0  # New - was 0.0
+            elif gap <= 2:
+                return 3.0  # Slightly improved from 2.0
+
+        return 0.0
+
+    def _score_years_experience_match(
+        self,
+        user_years: int,
+        ai_years_min: int,
+        ai_years_max: int,
+        job_description: str,
+        ai_exp_required: str,
+    ) -> float:
+        """Score years of experience matching with flexibility"""
+        if not user_years:
+            return 0.0
+
+        score = 0.0
+
+        # AI-enhanced years matching (highest priority)
+        if ai_years_min is not None or ai_years_max is not None:
+            if ai_years_min is not None and ai_years_max is not None:
+                # Range specified
+                if ai_years_min <= user_years <= ai_years_max:
+                    return 10.0
+                elif user_years >= ai_years_min:
+                    # Overqualified but acceptable
+                    excess_years = user_years - ai_years_max
+                    if excess_years <= 2:
+                        return 8.0
+                    elif excess_years <= 5:
+                        return 6.0
+                    else:
+                        return 4.0
+                elif user_years >= (ai_years_min * 0.8):
+                    # Slightly underqualified but close
+                    return 5.0
+                elif user_years == 0 and ai_years_min <= 3:
+                    # Entry-level user applying to 1-3 year jobs (very common)
+                    if ai_years_min <= 1:
+                        return 8.0  # 0 years vs 1 year - very close
+                    elif ai_years_min <= 2:
+                        return 6.0  # 0 years vs 2 years - acceptable
+                    else:  # ai_years_min == 3
+                        return 4.0  # 0 years vs 3 years - stretch but possible
+            elif ai_years_min is not None:
+                # Only minimum specified
+                if user_years >= ai_years_min:
+                    return 9.0
+                elif user_years >= (ai_years_min * 0.8):
+                    return 6.0
+            elif ai_years_max is not None:
+                # Only maximum specified (rare case)
+                if user_years <= ai_years_max:
+                    return 8.0
+
+        # Fallback to text-based years extraction
+        import re
+
+        all_text = f"{job_description} {ai_exp_required}"
+
+        # Look for year patterns
+        year_patterns = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", all_text)
+        if year_patterns:
+            required_years = []
+            for pattern in year_patterns:
+                try:
+                    required_years.append(int(pattern))
+                except ValueError:
+                    continue
+
+            if required_years:
+                min_required = min(required_years)
+                max_required = max(required_years) if len(required_years) > 1 else None
+
+                if user_years >= min_required:
+                    if max_required and user_years <= max_required:
+                        return 7.0  # Within range
+                    else:
+                        return 6.0  # Meets minimum
+                elif user_years >= (min_required * 0.8):
+                    return 4.0  # Close to minimum
+
+        return score
+
+    def _get_match_reasons(self, user_prefs: Dict, job: Dict) -> List[str]:
+        """Get human-readable reasons for the match"""
+        reasons = []
+
+        # Job title matches
+        user_roles = user_prefs.get("job_roles", [])
+        job_title = (job.get("title", "") or "").lower()
+        for role in user_roles:
+            if role.lower() in job_title:
+                reasons.append(f"Job title matches '{role}'")
+
+        # Skills matches
+        user_skills = user_prefs.get("technical_skills", []) or []
+        job_description = (job.get("description", "") or "").lower()
+        for skill in user_skills:
+            if skill and skill.lower() in job_description:
+                reasons.append(f"Requires '{skill}' skill")
+
+        # Work arrangement matches
+        user_arrangements = user_prefs.get("work_arrangements", []) or []
+        if "remote" in user_arrangements:
+            if job.get("ai_remote_allowed") or "remote" in job_title:
+                reasons.append("Remote work available")
+
+        # Location matches - DISABLED
+        # user_locations = user_prefs.get("preferred_locations", []) or []
+        # job_location = (job.get("location", "") or "").lower()
+        # for location in user_locations:
+        #     if location.lower() in job_location:
+        #         reasons.append(f"Located in {location}")
+
+        return reasons[:3]  # Limit to top 3 reasons
+
+    def format_job_for_whatsapp(self, job: Dict, index: int) -> str:
+        """Format job for WhatsApp with intelligent match information"""
+        try:
+            # Extract key information
+            title = job.get("title", "Job Opportunity")
+            company = job.get("company", "Company")
+            location = job.get("location", "Location not specified")
+
+            # Match information
+            match_score = job.get("match_score", 0)
+            match_reasons = job.get("match_reasons", [])
+
+            # Build message
+            message = f"""*{index}. {title}*
+🏢 {company}
+📍 {location}"""
+
+            # Add match score and reasons
+            if match_score > 0:
+                message += f"\n⭐ {match_score:.0f}% match"
+                if match_reasons:
+                    message += f"\n🎯 {', '.join(match_reasons)}"
+
+            # Add application link
+            if job.get("job_url"):
+                message += f"\n🔗 Apply: {job['job_url']}"
+            elif job.get("ai_application_url"):
+                message += f"\n🔗 Apply: {job['ai_application_url']}"
+
+            return message
+
+        except Exception as e:
+            logger.error(f"❌ Error formatting job: {e}")
+            return f"{index}. Job opportunity available (formatting error)"
