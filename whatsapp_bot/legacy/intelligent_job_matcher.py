@@ -417,13 +417,22 @@ class IntelligentJobMatcher:
         - City variations and proximity
         - International locations
         """
-        # Direct exact matches
+        # Extract key location terms from user input
+        user_terms = self._extract_location_terms(user_location)
+
+        # Direct exact matches (original logic)
         if (
             user_location in job_location
             or user_location in ai_city
             or user_location in ai_state
         ):
             return True
+
+        # Flexible partial matching - check if any user term matches job location
+        all_job_location_text = f"{job_location} {ai_city} {ai_state}".lower()
+        for term in user_terms:
+            if term in all_job_location_text:
+                return True
 
         # Nigerian location abbreviations and variations
         if self._nigerian_location_match(
@@ -442,6 +451,42 @@ class IntelligentJobMatcher:
             return True
 
         return False
+
+    def _extract_location_terms(self, location: str) -> list:
+        """
+        Extract key location terms from user location input
+
+        Examples:
+        - "Lagos, Lagos State" → ["lagos", "lagos state"]
+        - "Abuja, FCT" → ["abuja", "fct"]
+        - "Port Harcourt" → ["port harcourt", "port", "harcourt"]
+        """
+        if not location:
+            return []
+
+        location_lower = location.lower().strip()
+        terms = []
+
+        # Split by common separators
+        parts = location_lower.replace(",", " ").replace("-", " ").split()
+
+        # Add individual words
+        for part in parts:
+            if len(part) > 2:  # Skip very short words
+                terms.append(part)
+
+        # Add the full location
+        terms.append(location_lower)
+
+        # Add combinations for multi-word locations
+        if len(parts) > 1:
+            # Add pairs of words
+            for i in range(len(parts) - 1):
+                pair = f"{parts[i]} {parts[i+1]}"
+                terms.append(pair)
+
+        # Remove duplicates and return
+        return list(set(terms))
 
     def _nigerian_location_match(
         self, user_location: str, job_location: str, ai_city: str, ai_state: str
