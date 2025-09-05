@@ -14,9 +14,9 @@ whatsapp_bot_path = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, whatsapp_bot_path)  # Use insert(0, ...) for higher priority
 
 from legacy.database_manager import DatabaseManager
-from legacy.intelligent_job_matcher import IntelligentJobMatcher
 from legacy.job_tracking_system import JobTrackingSystem
 from legacy.window_management_system import WindowManagementSystem
+from services.embedding_job_matcher import EmbeddingJobMatcher
 
 # Import apply button designer with robust error handling
 apply_button_designer = None
@@ -64,7 +64,13 @@ class SmartDeliveryEngine:
 
     def __init__(self, whatsapp_token=None, whatsapp_phone_id=None):
         self.db = DatabaseManager()
-        self.job_matcher = IntelligentJobMatcher(self.db.connection)
+
+        # Initialize embedding matcher
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not openai_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        self.embedding_matcher = EmbeddingJobMatcher(self.db.connection, openai_key)
+
         self.job_tracker = JobTrackingSystem()
         self.window_manager = WindowManagementSystem()
 

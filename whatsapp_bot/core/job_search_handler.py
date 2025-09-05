@@ -261,11 +261,11 @@ class JobSearchHandler:
         )
 
     def get_matching_jobs(self, user_prefs: dict, limit: int = 10) -> List[Dict]:
-        """Get jobs matching user preferences"""
+        """Get jobs matching user preferences using embeddings"""
         try:
-            # Use the job matcher to find relevant jobs
-            matching_jobs = self.job_matcher.find_matching_jobs(user_prefs, limit=limit)
-            return matching_jobs
+            # This method is deprecated - use embedding search instead
+            logger.warning("get_matching_jobs is deprecated - use embedding search")
+            return []
         except Exception as e:
             logger.error(f"Error getting matching jobs: {e}")
             return []

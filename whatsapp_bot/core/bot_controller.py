@@ -10,7 +10,6 @@ from typing import Dict, Optional
 # Legacy imports (keeping existing structure)
 from legacy.database_manager import DatabaseManager
 from legacy.flexible_preference_manager import FlexiblePreferenceManager
-from legacy.intelligent_job_matcher import IntelligentJobMatcher
 from legacy.job_tracking_system import JobTrackingSystem
 from legacy.window_management_system import WindowManagementSystem
 from agents.conversation_agent import ConversationAgent, PreferenceParsingAgent
@@ -43,13 +42,11 @@ class BotController:
 
         # Initialize preference and job managers
         self.pref_manager = FlexiblePreferenceManager(self.db.connection)
-        self.job_matcher = IntelligentJobMatcher(self.db.connection)
         self.job_tracker = JobTrackingSystem()
         self.window_manager = WindowManagementSystem()
 
-        # Add embedding matcher with legacy fallback
+        # Initialize embedding matcher only
         self.embedding_matcher = EmbeddingJobMatcher(self.db.connection, openai_api_key)
-        self.legacy_matcher = self.job_matcher  # Keep reference for fallback
 
         # Initialize AI agents
         self.conversation_agent = ConversationAgent(openai_api_key)
@@ -79,7 +76,7 @@ class BotController:
         self.job_search_handler = JobSearchHandler(
             self.db,
             self.pref_manager,
-            self.job_matcher,
+            self.embedding_matcher,  # Use embedding matcher instead
             self.job_service,
             self.whatsapp_service,
             self.conversation_agent,

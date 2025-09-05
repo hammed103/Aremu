@@ -14,9 +14,9 @@ whatsapp_bot_path = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, whatsapp_bot_path)  # Use insert(0, ...) for higher priority
 
 from legacy.database_manager import DatabaseManager
-from legacy.intelligent_job_matcher import IntelligentJobMatcher
 from legacy.job_tracking_system import JobTrackingSystem
 from legacy.window_management_system import WindowManagementSystem
+from services.embedding_job_matcher import EmbeddingJobMatcher
 
 # Import apply button designer with robust error handling
 apply_button_designer = None
@@ -64,7 +64,13 @@ class SmartDeliveryEngine:
 
     def __init__(self, whatsapp_token=None, whatsapp_phone_id=None):
         self.db = DatabaseManager()
-        self.job_matcher = IntelligentJobMatcher(self.db.connection)
+
+        # Initialize embedding matcher
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not openai_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        self.embedding_matcher = EmbeddingJobMatcher(self.db.connection, openai_key)
+
         self.job_tracker = JobTrackingSystem()
         self.window_manager = WindowManagementSystem()
 
@@ -203,14 +209,23 @@ class SmartDeliveryEngine:
                 if unseen_jobs:
                     print(f"   ✅ User {user_id} has unseen jobs, calculating match...")
 
-                    # Convert user row to preferences format for intelligent matcher
-                    user_prefs = self._convert_user_to_preferences_format(user)
+                    # Use embedding-based matching
+                    print(f"🧠 Using embedding search for user {user_id}")
 
-                    # Debug logging - UPDATED VERSION
-                    print(f"🔧 DEBUG: User {user_id} preferences: {user_prefs}")
+                    user_jobs = self.embedding_matcher.search_jobs_with_embeddings(
+                        user_id, 100
+                    )
 
-                    # Calculate match score
-                    match_score = self.job_matcher._calculate_job_score(user_prefs, job)
+                    # Find this specific job in the results
+                    job_id = job.get("id")
+                    match_score = 0.0
+
+                    for matched_job in user_jobs:
+                        if matched_job.get("id") == job_id:
+                            match_score = matched_job.get("match_score", 0.0)
+                            break
+
+                    print(f"🧠 Embedding match score: {match_score:.1f}%")
 
                     if match_score >= self.min_match_score:
                         matches.append(
@@ -233,46 +248,6 @@ class SmartDeliveryEngine:
         # Sort by match score (highest first)
         matches.sort(key=lambda x: x["match_score"], reverse=True)
         return matches
-
-    def _convert_user_to_preferences_format(self, user: Dict) -> Dict:
-        """Convert user database row to preferences format for intelligent matcher"""
-
-        def ensure_list_of_strings(value):
-            """Ensure value is a list of strings, handling PostgreSQL array format"""
-            if value is None:
-                return []
-            if isinstance(value, str):
-                # Handle PostgreSQL array format: {item1,item2,item3}
-                if value.startswith("{") and value.endswith("}"):
-                    # Remove braces and split by comma
-                    items = value[1:-1].split(",")
-                    # Clean up each item (remove quotes and whitespace)
-                    return [item.strip().strip("\"'") for item in items if item.strip()]
-                else:
-                    # Single string value
-                    return [value]
-            if isinstance(value, list):
-                # Ensure all items are strings
-                return [str(item) for item in value if item is not None]
-            return []
-
-        return {
-            "job_roles": ensure_list_of_strings(user.get("job_roles")),
-            "technical_skills": ensure_list_of_strings(user.get("technical_skills")),
-            "preferred_locations": ensure_list_of_strings(
-                user.get("preferred_locations")
-            ),
-            "salary_min": user.get("salary_min"),
-            "salary_currency": user.get("salary_currency"),
-            "willing_to_relocate": user.get("willing_to_relocate", False),
-            "work_arrangements": ensure_list_of_strings(user.get("work_arrangements")),
-            "years_of_experience": user.get("years_of_experience"),
-            "experience_level": user.get("experience_level"),
-            "job_categories": ensure_list_of_strings(user.get("job_categories")),
-            "industry_preferences": ensure_list_of_strings(
-                user.get("industry_preferences")
-            ),
-        }
 
     def send_whatsapp_job_alert(
         self, user: Dict, job: Dict, match_score: float
