@@ -2783,8 +2783,8 @@ class IntelligentJobMatcher:
 
     def _score_ai_job_function_match(self, user_prefs: dict, job: dict) -> float:
         """Match based on AI job function (Sales, Engineering, etc.)"""
-        user_categories = user_prefs.get("job_categories", [])
-        user_roles = user_prefs.get("job_roles", [])
+        user_categories = user_prefs.get("job_categories", []) or []
+        user_roles = user_prefs.get("job_roles", []) or []
 
         if not user_categories and not user_roles:
             return 0.0
@@ -2808,7 +2808,7 @@ class IntelligentJobMatcher:
                 return 25.0
 
         # Enhanced direct matching for data roles (second priority - 25 points)
-        if any(
+        if user_roles and any(
             "data" in role.lower() or "analyst" in role.lower() for role in user_roles
         ):
             if any(
@@ -2828,19 +2828,20 @@ class IntelligentJobMatcher:
             "operations": ["operations", "logistics", "supply chain"],
         }
 
-        for user_role in user_roles:
-            user_role_lower = user_role.lower()
-            for func, keywords in function_keywords.items():
-                if any(keyword in user_role_lower for keyword in keywords):
-                    if func in ai_function_lower:
-                        return 20.0
+        if user_roles:
+            for user_role in user_roles:
+                user_role_lower = user_role.lower()
+                for func, keywords in function_keywords.items():
+                    if any(keyword in user_role_lower for keyword in keywords):
+                        if func in ai_function_lower:
+                            return 20.0
 
         return 0.0
 
     def _score_ai_industry_match(self, user_prefs: dict, job: dict) -> float:
         """Match based on AI industry classification"""
-        user_industries = user_prefs.get("industry_preferences", [])
-        user_roles = user_prefs.get("job_roles", [])
+        user_industries = user_prefs.get("industry_preferences", []) or []
+        user_roles = user_prefs.get("job_roles", []) or []
 
         ai_industries = job.get("ai_industry", []) or []
         if not ai_industries:
@@ -2880,7 +2881,7 @@ class IntelligentJobMatcher:
 
         # Special handling for sales roles - they work across many industries
         sales_keywords = ["sales", "account", "business development", "key account"]
-        is_sales_user = any(
+        is_sales_user = user_roles and any(
             keyword in role.lower() for role in user_roles for keyword in sales_keywords
         )
 
