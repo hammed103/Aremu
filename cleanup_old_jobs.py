@@ -32,8 +32,8 @@ def cleanup_old_canonical_jobs():
             """
             SELECT COUNT(*) as old_jobs_count
             FROM canonical_jobs
-            WHERE posted_date < %s::date
-               OR posted_date IS NULL
+            WHERE scraped_at < %s::timestamp
+               OR scraped_at IS NULL
         """,
             (cutoff_date,),
         )
@@ -53,11 +53,11 @@ def cleanup_old_canonical_jobs():
         # Show some examples of jobs that will be deleted
         cursor.execute(
             """
-            SELECT id, title, company, posted_date
+            SELECT id, title, company, scraped_at
             FROM canonical_jobs
-            WHERE posted_date < %s::date
-               OR posted_date IS NULL
-            ORDER BY posted_date DESC NULLS LAST
+            WHERE scraped_at < %s::timestamp
+               OR scraped_at IS NULL
+            ORDER BY scraped_at DESC NULLS LAST
             LIMIT 5
         """,
             (cutoff_date,),
@@ -66,8 +66,8 @@ def cleanup_old_canonical_jobs():
         sample_jobs = cursor.fetchall()
         print(f"\nSample canonical jobs to be deleted:")
         for job in sample_jobs:
-            job_id, title, company, posted_date = job
-            print(f"  ID {job_id}: {title} at {company} (Posted: {posted_date})")
+            job_id, title, company, scraped_at = job
+            print(f"  ID {job_id}: {title} at {company} (Scraped: {scraped_at})")
 
         # Ask for confirmation
         print(
@@ -84,8 +84,8 @@ def cleanup_old_canonical_jobs():
         cursor.execute(
             """
             DELETE FROM canonical_jobs
-            WHERE posted_date < %s::date
-               OR posted_date IS NULL
+            WHERE scraped_at < %s::timestamp
+               OR scraped_at IS NULL
         """,
             (cutoff_date,),
         )
@@ -107,11 +107,11 @@ def cleanup_old_canonical_jobs():
         cursor.execute(
             """
             SELECT
-                MIN(posted_date) as oldest_job,
-                MAX(posted_date) as newest_job,
+                MIN(scraped_at) as oldest_job,
+                MAX(scraped_at) as newest_job,
                 COUNT(*) as remaining_jobs
             FROM canonical_jobs
-            WHERE posted_date IS NOT NULL
+            WHERE scraped_at IS NOT NULL
         """
         )
 
@@ -275,10 +275,10 @@ def show_canonical_jobs_stats():
         cursor.execute(
             """
             SELECT
-                MIN(posted_date) as oldest_job,
-                MAX(posted_date) as newest_job
+                MIN(scraped_at) as oldest_job,
+                MAX(scraped_at) as newest_job
             FROM canonical_jobs
-            WHERE posted_date IS NOT NULL
+            WHERE scraped_at IS NOT NULL
         """
         )
 
@@ -287,7 +287,7 @@ def show_canonical_jobs_stats():
             oldest_job, newest_job = result
             print(f"Date range: {oldest_job} to {newest_job}")
         else:
-            print("No jobs with valid posted_date")
+            print("No jobs with valid scraped_at")
 
         # Jobs by age
         cutoff_date = datetime.now() - timedelta(days=3)
@@ -295,8 +295,9 @@ def show_canonical_jobs_stats():
         cursor.execute(
             """
             SELECT
-                COUNT(CASE WHEN posted_date >= %s::date THEN 1 END) as recent_jobs,
-                COUNT(CASE WHEN posted_date < %s::date OR posted_date IS NULL THEN 1 END) as old_jobs
+                COUNT(CASE WHEN scraped_at >= %s::timestamp THEN 1 END) as recent_jobs,
+                COUNT(CASE WHEN scraped_at < %s::timestamp
+                           OR scraped_at IS NULL THEN 1 END) as old_jobs
             FROM canonical_jobs
         """,
             (cutoff_date, cutoff_date),
