@@ -168,23 +168,10 @@ class FieldUpdateHandler:
 
             preferences = {"job_roles": job_titles}
 
-            # Apply AI expansion if preference parser is available
-            if self.preference_parser:
-                try:
-                    expanded_preferences = (
-                        self.preference_parser.expand_job_categories_with_ai(
-                            preferences
-                        )
-                    )
-                    if expanded_preferences:
-                        preferences.update(expanded_preferences)
-                        logger.info(
-                            f"🚀 AI expanded job preferences for user {user_id}: {expanded_preferences}"
-                        )
-                except Exception as e:
-                    logger.warning(
-                        f"⚠️ AI expansion failed, using original preferences: {e}"
-                    )
+            # Skip AI expansion - embeddings handle semantic matching
+            logger.info(
+                f"💾 Saving user job preferences verbatim for user {user_id}: {job_titles}"
+            )
 
             success = self.pref_manager.save_preferences(user_id, preferences)
 

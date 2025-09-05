@@ -6,6 +6,7 @@ Flexible User Preference Manager - Allows any job title while providing intellig
 import logging
 from typing import Dict, List, Optional, Union
 import re
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,19 @@ class FlexiblePreferenceManager:
     def __init__(self, db_connection):
         self.connection = db_connection
 
+        # Add embedding matcher for auto-generation
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            try:
+                from services.embedding_job_matcher import EmbeddingJobMatcher
+
+                self.embedding_matcher = EmbeddingJobMatcher(db_connection, openai_key)
+            except ImportError:
+                logger.warning("EmbeddingJobMatcher not available")
+                self.embedding_matcher = None
+        else:
+            self.embedding_matcher = None
+
     def validate_and_standardize(self, raw_preferences: Dict) -> Dict:
         """Flexible validation that accepts any job title while providing intelligent standardization"""
         try:
@@ -188,11 +202,14 @@ class FlexiblePreferenceManager:
                         str(x) for x in job_input
                     )
 
-                # AI-enhanced job roles
+                # Store original user input verbatim
+                standardized["user_job_input"] = str(job_input)
+
+                # Process job roles (minimal processing, no AI enhancement)
                 roles = self._standardize_job_roles_flexible(job_input)
                 if roles:
                     standardized["job_roles"] = roles
-                    # Auto-infer categories from roles
+                    # Auto-infer categories from roles (pattern matching only)
                     inferred_categories = self._infer_categories_from_roles_flexible(
                         roles
                     )
@@ -290,7 +307,7 @@ class FlexiblePreferenceManager:
                         str(x) for x in location_input
                     )
 
-                # AI-enhanced locations
+                # Process locations (minimal processing, no AI enhancement)
                 locations = self._standardize_locations_flexible(location_input)
                 if locations:
                     standardized["preferred_locations"] = locations
@@ -334,22 +351,22 @@ class FlexiblePreferenceManager:
     def _standardize_job_roles_flexible(
         self, role_input: Union[str, List[str]]
     ) -> List[str]:
-        """Accept ANY job role and expand using AI to generate related roles"""
+        """Accept ANY job role verbatim - no AI enhancement (embeddings handle semantic matching)"""
         if isinstance(role_input, str):
             if "," in role_input:
-                roles = [role.strip().lower() for role in role_input.split(",")]
+                roles = [role.strip() for role in role_input.split(",")]
             else:
-                roles = [role_input.strip().lower()]
+                roles = [role_input.strip()]
         elif isinstance(role_input, list):
-            roles = [str(role).strip().lower() for role in role_input]
+            roles = [str(role).strip() for role in role_input]
         else:
             return []
 
-        # Clean and format roles first
+        # Clean and format roles (minimal processing)
         clean_roles = []
         for role in roles:
             if role and len(role) > 1:
-                # Basic cleaning
+                # Basic cleaning only - preserve user input
                 clean_role = re.sub(
                     r"[^\w\s\-\+\.]", "", role
                 )  # Remove special chars except dash, plus, dot
@@ -357,22 +374,13 @@ class FlexiblePreferenceManager:
                     r"\s+", " ", clean_role
                 ).strip()  # Normalize whitespace
                 if clean_role:
-                    clean_roles.append(clean_role)
+                    # Preserve original case/formatting
+                    clean_roles.append(clean_role.title())
 
-        # Use AI to expand job roles for better matching
-        expanded_roles = []
-        for role in clean_roles:
-            ai_expanded = self._ai_expand_job_role(role)
-            if ai_expanded:
-                expanded_roles.extend(ai_expanded)
-            else:
-                # Fallback to original role if AI expansion fails
-                expanded_roles.append(role)
-
-        # Remove duplicates while preserving order
+        # Remove duplicates while preserving order (no AI expansion)
         seen = set()
         final_roles = []
-        for role in expanded_roles:
+        for role in clean_roles:
             if role.lower() not in seen:
                 seen.add(role.lower())
                 final_roles.append(role)
@@ -507,23 +515,15 @@ Job role to expand: {role}"""
             if loc and len(loc) > 1:
                 clean_locations.append(loc)
 
-        # Use AI to enhance and standardize locations
-        enhanced_locations = []
-        for location in clean_locations:
-            ai_enhanced = self._ai_enhance_location(location)
-            if ai_enhanced:
-                enhanced_locations.extend(ai_enhanced)
-            else:
-                # Fallback to basic title case if AI enhancement fails
-                enhanced_locations.append(location.title())
-
-        # Remove duplicates while preserving order
-        seen = set()
+        # Keep user input verbatim (no AI enhancement - embeddings handle semantic matching)
         final_locations = []
-        for loc in enhanced_locations:
-            if loc.lower() not in seen:
-                seen.add(loc.lower())
-                final_locations.append(loc)
+        seen = set()
+        for location in clean_locations:
+            # Basic title case formatting only
+            formatted_location = location.title()
+            if formatted_location.lower() not in seen:
+                seen.add(formatted_location.lower())
+                final_locations.append(formatted_location)
 
         return final_locations
 
@@ -984,6 +984,15 @@ Location to enhance: {location}"""
             logger.info(
                 f"💾 Saved flexible preferences for user {user_id}: {clean_prefs}"
             )
+
+            # Auto-generate embedding after saving preferences
+            if self.embedding_matcher:
+                try:
+                    self.embedding_matcher.generate_user_embedding(user_id)
+                    logger.info(f"🧠 Auto-generated embedding for user {user_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to auto-generate embedding: {e}")
+
             return True
 
         except Exception as e:
@@ -991,6 +1000,14 @@ Location to enhance: {location}"""
                 f"❌ Error saving flexible preferences for user {user_id}: {e}"
             )
             return False
+
+    def regenerate_user_embedding(self, user_id: int) -> bool:
+        """Manually regenerate user embedding"""
+        if not self.embedding_matcher:
+            logger.warning("Embedding matcher not available")
+            return False
+
+        return self.embedding_matcher.generate_user_embedding(user_id)
 
     def get_preferences(self, user_id: int) -> Dict:
         """Get user preferences from flexible schema"""

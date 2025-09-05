@@ -52,6 +52,26 @@ class IntelligentJobMatcher:
                 "ml engineer",
                 "ai researcher",
                 "data specialist",
+                "business intelligence",
+                "bi analyst",
+                "data mining",
+                "big data",
+                "quantitative analyst",
+                "research scientist",
+                "data science",
+                "analytics engineer",
+                "data analytics",
+                "business analyst",
+                "intelligence analyst",
+                "data modeler",
+                "data architect",
+                "senior data",
+                "logistics data analyst",
+                "web data analyst",
+                "data extraction",
+                "web scraping",
+                "data harvesting",
+                "data infrastructure",
             ],
             "design": [
                 "designer",
@@ -326,16 +346,23 @@ class IntelligentJobMatcher:
         - Handles abbreviations: Lagos/LOS, Abuja/FCT, Port Harcourt/PH, etc.
         - Geographic proximity for Nigerian locations
         - Remote work exceptions
+
+        CRITICAL FIX: Always allow remote jobs if they're truly remote, regardless of user preferences
         """
         user_locations = user_prefs.get("preferred_locations", []) or []
         willing_to_relocate = user_prefs.get("willing_to_relocate", False)
         user_work_arrangements = user_prefs.get("work_arrangements", []) or []
 
+        # CRITICAL FIX: Always allow remote jobs if they're truly remote
+        # This fixes the issue where data science remote jobs were being filtered out
+        if self._job_allows_remote_work(job):
+            return True  # Remote jobs should always be allowed
+
         # If no location preferences set, allow all jobs
         if not user_locations:
             return True
 
-        # If user wants remote work, check if job allows remote
+        # If user wants remote work, check if job allows remote (already handled above)
         if "remote" in [arr.lower() for arr in user_work_arrangements]:
             if self._job_allows_remote_work(job):
                 return True  # Remote jobs bypass location filtering

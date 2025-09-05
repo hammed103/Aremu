@@ -56,6 +56,22 @@ class AIEnhancedJobParser:
         # Ensure canonical jobs table exists
         self.ensure_canonical_jobs_table()
 
+        # Add embedding matcher
+        if self.use_ai and self.openai_client:
+            try:
+                # Import here to avoid circular imports
+                sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+                from services.embedding_job_matcher import EmbeddingJobMatcher
+
+                self.embedding_matcher = EmbeddingJobMatcher(
+                    self.connection, os.getenv("OPENAI_API_KEY")
+                )
+            except ImportError:
+                logger.warning("EmbeddingJobMatcher not available")
+                self.embedding_matcher = None
+        else:
+            self.embedding_matcher = None
+
     def connect_to_database(self):
         """Connect to PostgreSQL database"""
         try:
@@ -814,6 +830,14 @@ class AIEnhancedJobParser:
                 """,
                     (job["raw_job_id"],),
                 )
+
+            # Auto-generate embedding for new job
+            if self.embedding_matcher and job_id:
+                try:
+                    self.embedding_matcher.generate_job_embedding(job_id)
+                    logger.debug(f"🧠 Auto-generated embedding for job {job_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to auto-generate job embedding: {e}")
 
             self.stats["total_processed"] += 1
             return job_id

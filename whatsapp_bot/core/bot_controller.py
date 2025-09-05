@@ -17,6 +17,9 @@ from agents.conversation_agent import ConversationAgent, PreferenceParsingAgent
 from services.job_service import JobService
 from services.whatsapp_service import WhatsAppService
 
+# New embedding-based services
+from services.embedding_job_matcher import EmbeddingJobMatcher
+
 # New modular handlers
 from .preference_handler import PreferenceHandler
 from .field_update_handler import FieldUpdateHandler
@@ -43,6 +46,10 @@ class BotController:
         self.job_matcher = IntelligentJobMatcher(self.db.connection)
         self.job_tracker = JobTrackingSystem()
         self.window_manager = WindowManagementSystem()
+
+        # Add embedding matcher with legacy fallback
+        self.embedding_matcher = EmbeddingJobMatcher(self.db.connection, openai_api_key)
+        self.legacy_matcher = self.job_matcher  # Keep reference for fallback
 
         # Initialize AI agents
         self.conversation_agent = ConversationAgent(openai_api_key)
@@ -77,6 +84,9 @@ class BotController:
             self.whatsapp_service,
             self.conversation_agent,
         )
+
+        # Add embedding matcher to job search handler
+        self.job_search_handler.embedding_matcher = self.embedding_matcher
 
         self.interactive_handler = InteractiveHandler(
             self.db,

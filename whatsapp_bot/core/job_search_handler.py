@@ -270,6 +270,33 @@ class JobSearchHandler:
             logger.error(f"Error getting matching jobs: {e}")
             return []
 
+    def search_jobs_for_user(self, user_id: int, limit: int = 10) -> List[Dict]:
+        """Search jobs using embeddings with legacy fallback"""
+        try:
+            # Try embedding-based search first if available
+            if hasattr(self, "embedding_matcher"):
+                jobs = self.embedding_matcher.search_jobs_with_embeddings(
+                    user_id, limit
+                )
+
+                if jobs:
+                    logger.info(f"🎯 Using embedding search for user {user_id}")
+                    return jobs
+                else:
+                    logger.info(
+                        f"🔄 No embedding results, falling back to legacy search for user {user_id}"
+                    )
+
+            # Fallback to legacy matching
+            user_prefs = self.pref_manager.get_user_preferences(user_id)
+            return self.job_matcher.find_matching_jobs(user_prefs, limit)
+
+        except Exception as e:
+            logger.error(f"❌ Job search error: {e}")
+            # Final fallback
+            user_prefs = self.pref_manager.get_user_preferences(user_id)
+            return self.job_matcher.find_matching_jobs(user_prefs, limit)
+
     def format_job_message(self, job: Dict, user_name: str = None) -> str:
         """Format a single job into a WhatsApp message"""
         try:

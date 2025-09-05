@@ -19,6 +19,11 @@ schedule==1.2.0
 # Database
 psycopg2-binary==2.9.7
 
+# Vector Database & Embeddings
+pgvector==0.2.4
+numpy==1.24.3
+scikit-learn==1.3.0
+
 # Scraper Dependencies
 python-jobspy>=1.1.0
 pandas>=1.5.0
