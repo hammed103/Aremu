@@ -42,23 +42,33 @@ class PreferenceHandler:
 
             # Create preference display
             if current_prefs:
-                # Safe array handling for existing preferences
-                job_roles = current_prefs.get("job_roles", [])
-                job_roles_str = (
-                    ", ".join(job_roles)
-                    if job_roles and isinstance(job_roles, list)
-                    else "Not set"
-                )
+                # Show original user input if available, otherwise show AI-enhanced versions
+                user_job_input = current_prefs.get("user_job_input")
+                if user_job_input:
+                    job_roles_str = user_job_input
+                else:
+                    # Fallback to AI-enhanced job roles
+                    job_roles = current_prefs.get("job_roles", [])
+                    job_roles_str = (
+                        ", ".join(job_roles)
+                        if job_roles and isinstance(job_roles, list)
+                        else "Not set"
+                    )
 
-                # Check both field names for backward compatibility
-                locations = current_prefs.get(
-                    "preferred_locations", []
-                ) or current_prefs.get("location", [])
-                locations_str = (
-                    ", ".join(locations)
-                    if locations and isinstance(locations, list)
-                    else "Not set"
-                )
+                # Show original location input if available
+                user_location_input = current_prefs.get("user_location_input")
+                if user_location_input:
+                    locations_str = user_location_input
+                else:
+                    # Fallback to AI-enhanced locations
+                    locations = current_prefs.get(
+                        "preferred_locations", []
+                    ) or current_prefs.get("location", [])
+                    locations_str = (
+                        ", ".join(locations)
+                        if locations and isinstance(locations, list)
+                        else "Not set"
+                    )
 
                 work_arrangements = current_prefs.get("work_arrangements", [])
                 work_style_str = (
@@ -152,17 +162,20 @@ class PreferenceHandler:
                 else "there"
             )
 
-            # Show current values or defaults
-            job_roles = (
-                ", ".join(current_prefs.get("job_roles", []))
-                if current_prefs and current_prefs.get("job_roles")
-                else "Not set"
-            )
-            locations = (
-                ", ".join(current_prefs.get("preferred_locations", []))
-                if current_prefs and current_prefs.get("preferred_locations")
-                else "❌ Not set"
-            )
+            # Show current values or defaults (prefer original user input)
+            if current_prefs and current_prefs.get("user_job_input"):
+                job_roles = current_prefs.get("user_job_input")
+            elif current_prefs and current_prefs.get("job_roles"):
+                job_roles = ", ".join(current_prefs.get("job_roles", []))
+            else:
+                job_roles = "Not set"
+
+            if current_prefs and current_prefs.get("user_location_input"):
+                locations = current_prefs.get("user_location_input")
+            elif current_prefs and current_prefs.get("preferred_locations"):
+                locations = ", ".join(current_prefs.get("preferred_locations", []))
+            else:
+                locations = "❌ Not set"
             salary = (
                 f"₦{current_prefs.get('salary_min'):,}"
                 if current_prefs and current_prefs.get("salary_min")

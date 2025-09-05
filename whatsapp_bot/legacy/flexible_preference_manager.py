@@ -179,6 +179,16 @@ class FlexiblePreferenceManager:
                     or raw_preferences.get("job_role")
                     or raw_preferences.get("job_roles")
                 )
+
+                # Preserve original user input
+                if isinstance(job_input, str):
+                    standardized["user_job_input"] = job_input
+                elif isinstance(job_input, list):
+                    standardized["user_job_input"] = ", ".join(
+                        str(x) for x in job_input
+                    )
+
+                # AI-enhanced job roles
                 roles = self._standardize_job_roles_flexible(job_input)
                 if roles:
                     standardized["job_roles"] = roles
@@ -271,6 +281,16 @@ class FlexiblePreferenceManager:
                     or raw_preferences.get("preferred_location")
                     or raw_preferences.get("preferred_locations")
                 )
+
+                # Preserve original user input
+                if isinstance(location_input, str):
+                    standardized["user_location_input"] = location_input
+                elif isinstance(location_input, list):
+                    standardized["user_location_input"] = ", ".join(
+                        str(x) for x in location_input
+                    )
+
+                # AI-enhanced locations
                 locations = self._standardize_locations_flexible(location_input)
                 if locations:
                     standardized["preferred_locations"] = locations
@@ -470,24 +490,105 @@ Job role to expand: {role}"""
     def _standardize_locations_flexible(
         self, location_input: Union[str, List[str]]
     ) -> List[str]:
-        """Accept any location"""
+        """Accept any location and enhance with AI standardization"""
         if isinstance(location_input, str):
             if "," in location_input:
-                locations = [loc.strip().title() for loc in location_input.split(",")]
+                locations = [loc.strip() for loc in location_input.split(",")]
             else:
-                locations = [location_input.strip().title()]
+                locations = [location_input.strip()]
         elif isinstance(location_input, list):
-            locations = [str(loc).strip().title() for loc in location_input]
+            locations = [str(loc).strip() for loc in location_input]
         else:
             return []
 
-        # Clean locations
+        # Clean and format locations first
         clean_locations = []
         for loc in locations:
             if loc and len(loc) > 1:
                 clean_locations.append(loc)
 
-        return clean_locations
+        # Use AI to enhance and standardize locations
+        enhanced_locations = []
+        for location in clean_locations:
+            ai_enhanced = self._ai_enhance_location(location)
+            if ai_enhanced:
+                enhanced_locations.extend(ai_enhanced)
+            else:
+                # Fallback to basic title case if AI enhancement fails
+                enhanced_locations.append(location.title())
+
+        # Remove duplicates while preserving order
+        seen = set()
+        final_locations = []
+        for loc in enhanced_locations:
+            if loc.lower() not in seen:
+                seen.add(loc.lower())
+                final_locations.append(loc)
+
+        return final_locations
+
+    def _ai_enhance_location(self, location: str) -> List[str]:
+        """Use AI to enhance and standardize a location"""
+        try:
+            import openai
+            import os
+
+            # Get OpenAI API key
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                logger.warning("No OpenAI API key found for location enhancement")
+                return [location.title()]
+
+            client = openai.OpenAI(api_key=api_key)
+
+            prompt = f"""Given the location "{location}", provide the standardized, properly formatted location name(s) for Nigeria.
+
+Requirements:
+- If it's a Nigerian city/state, provide the proper city name and state
+- If it's "Remote" or similar, keep as "Remote"
+- If it's international, provide the proper country name
+- Focus on Nigerian geography and common location formats
+- Return only the location names, one per line
+- No numbering, bullets, or extra text
+- Maximum 3 locations
+
+Examples:
+Input: "lagos" → "Lagos, Lagos State"
+Input: "abuja" → "Abuja, FCT"
+Input: "remote" → "Remote"
+Input: "uk" → "United Kingdom"
+
+Location to enhance: {location}"""
+
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=100,
+                temperature=0.2,
+            )
+
+            if response.choices and response.choices[0].message.content:
+                enhanced_locations = []
+                lines = response.choices[0].message.content.strip().split("\n")
+
+                for line in lines:
+                    clean_line = line.strip()
+                    # Remove numbering, bullets, etc.
+                    clean_line = re.sub(r"^[\d\.\-\*\+\s]+", "", clean_line)
+                    if clean_line and len(clean_line) > 1:
+                        enhanced_locations.append(clean_line)
+
+                if enhanced_locations:
+                    logger.info(
+                        f"✅ AI enhanced location '{location}' to: {enhanced_locations}"
+                    )
+                    return enhanced_locations[:3]  # Limit to 3 locations
+
+        except Exception as e:
+            logger.warning(f"AI location enhancement failed for '{location}': {e}")
+
+        # Fallback to title case
+        return [location.title()]
 
     def _standardize_skills_flexible(
         self, skills_input: Union[str, List[str]]

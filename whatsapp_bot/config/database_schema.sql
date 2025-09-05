@@ -138,8 +138,9 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 
     -- JOB PREFERENCES
-    job_categories job_category_enum[],     -- Industries/fields of interest
-    job_roles job_role_enum[],              -- Specific positions wanted
+    job_categories job_category_enum[],     -- Industries/fields of interest (AI-enhanced)
+    job_roles job_role_enum[],              -- Specific positions wanted (AI-enhanced)
+    user_job_input TEXT,                    -- Original job input from user (verbatim)
 
     -- WORK ARRANGEMENT & EMPLOYMENT
     work_arrangements work_arrangement_enum[], -- Remote, hybrid, on-site
@@ -157,7 +158,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     salary_negotiable BOOLEAN DEFAULT true,
 
     -- LOCATION PREFERENCES
-    preferred_locations TEXT[],             -- Array of cities/countries
+    preferred_locations TEXT[],             -- Array of cities/countries (AI-enhanced)
+    user_location_input TEXT,               -- Original location input from user (verbatim)
     willing_to_relocate BOOLEAN DEFAULT false,
     max_commute_distance INTEGER,          -- In kilometers
 
