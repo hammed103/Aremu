@@ -13,7 +13,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from legacy.database_manager import DatabaseManager as LegacyDatabaseManager
-from legacy.intelligent_job_matcher import IntelligentJobMatcher
 from services.embedding_job_matcher import EmbeddingJobMatcher
 
 logger = logging.getLogger(__name__)
@@ -27,23 +26,13 @@ class JobService:
         self.db = LegacyDatabaseManager()
         self.db.connect()
 
-        # Initialize embedding matcher with fallback to legacy
+        # Initialize embedding matcher only
         openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            try:
-                self.embedding_matcher = EmbeddingJobMatcher(
-                    self.db.connection, openai_key
-                )
-                logger.info("✅ Job Service initialized with embedding matcher")
-            except Exception as e:
-                logger.warning(f"Failed to initialize embedding matcher: {e}")
-                self.embedding_matcher = None
-        else:
-            self.embedding_matcher = None
+        if not openai_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
 
-        # Keep legacy matcher as fallback
-        self.intelligent_matcher = IntelligentJobMatcher(self.db.connection)
-        logger.info("✅ Job Service initialized with embedding + legacy matchers")
+        self.embedding_matcher = EmbeddingJobMatcher(self.db.connection, openai_key)
+        logger.info("✅ Job Service initialized with embedding matcher only")
 
     def generate_realistic_job_listings(
         self,
@@ -71,27 +60,11 @@ class JobService:
                 f"🔍 DEBUG - User {user_id} has seen {len(shown_job_ids)} jobs: {shown_job_ids}"
             )
 
-            # Use embedding matcher first, fallback to legacy
-            if self.embedding_matcher:
-                all_jobs = self.embedding_matcher.search_jobs_with_embeddings(
-                    user_id, limit=100
-                )
-                if all_jobs:
-                    logger.info(f"🧠 Using embedding search for user {user_id}")
-                else:
-                    logger.info(
-                        f"🔄 No embedding results, using legacy search for user {user_id}"
-                    )
-                    all_jobs = self.intelligent_matcher.search_jobs_for_user(
-                        user_id, limit=100
-                    )
-            else:
-                logger.info(
-                    f"🔄 Using legacy search for user {user_id} (no embedding matcher)"
-                )
-                all_jobs = self.intelligent_matcher.search_jobs_for_user(
-                    user_id, limit=100
-                )
+            # Use embedding matcher only
+            all_jobs = self.embedding_matcher.search_jobs_with_embeddings(
+                user_id, limit=100
+            )
+            logger.info(f"🧠 Using embedding search for user {user_id}")
             logger.info(
                 f"🔍 DEBUG - Found {len(all_jobs)} total jobs for user {user_id}"
             )
@@ -213,17 +186,10 @@ class JobService:
                 temp_phone = "+temp_search_user"
                 user_id = self.db.get_or_create_user(temp_phone, "Search User")
 
-            # Use embedding matcher first, fallback to legacy
-            if self.embedding_matcher:
-                jobs = self.embedding_matcher.search_jobs_with_embeddings(
-                    user_id, limit=100
-                )
-                if not jobs:
-                    jobs = self.intelligent_matcher.search_jobs_for_user(
-                        user_id, limit=100
-                    )
-            else:
-                jobs = self.intelligent_matcher.search_jobs_for_user(user_id, limit=100)
+            # Use embedding matcher only
+            jobs = self.embedding_matcher.search_jobs_with_embeddings(
+                user_id, limit=100
+            )
 
             if not jobs:
                 return ["No jobs found matching your preferences at the moment."]
