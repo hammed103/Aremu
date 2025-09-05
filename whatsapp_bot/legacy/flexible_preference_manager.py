@@ -305,7 +305,7 @@ class FlexiblePreferenceManager:
     def _standardize_job_roles_flexible(
         self, role_input: Union[str, List[str]]
     ) -> List[str]:
-        """Accept ANY job role - no restrictions, just clean formatting"""
+        """Accept ANY job role and expand using AI to generate related roles"""
         if isinstance(role_input, str):
             if "," in role_input:
                 roles = [role.strip().lower() for role in role_input.split(",")]
@@ -316,7 +316,7 @@ class FlexiblePreferenceManager:
         else:
             return []
 
-        # Clean and format roles (but don't restrict them)
+        # Clean and format roles first
         clean_roles = []
         for role in roles:
             if role and len(role) > 1:
@@ -330,7 +330,88 @@ class FlexiblePreferenceManager:
                 if clean_role:
                     clean_roles.append(clean_role)
 
-        return clean_roles
+        # Use AI to expand job roles for better matching
+        expanded_roles = []
+        for role in clean_roles:
+            ai_expanded = self._ai_expand_job_role(role)
+            if ai_expanded:
+                expanded_roles.extend(ai_expanded)
+            else:
+                # Fallback to original role if AI expansion fails
+                expanded_roles.append(role)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        final_roles = []
+        for role in expanded_roles:
+            if role.lower() not in seen:
+                seen.add(role.lower())
+                final_roles.append(role)
+
+        return final_roles
+
+    def _ai_expand_job_role(self, role: str) -> List[str]:
+        """Use AI to expand a single job role into multiple related roles"""
+        try:
+            import openai
+            import os
+
+            # Get OpenAI API key
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                logger.warning("No OpenAI API key found for job role expansion")
+                return [role]
+
+            client = openai.OpenAI(api_key=api_key)
+
+            prompt = f"""Given the job role "{role}", generate 5 standardized, specific job titles that are related and commonly used in Nigeria.
+
+Requirements:
+- Include the original role if it's already well-formatted
+- Focus on Nigerian job market terminology
+- Include different seniority levels where appropriate
+- Make titles specific and searchable
+- Return only the job titles, one per line
+- No numbering, bullets, or extra text
+
+Example for "sales":
+Sales Representative
+Sales Manager
+Business Development Executive
+Account Manager
+Sales Coordinator
+
+Job role to expand: {role}"""
+
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+                temperature=0.3,
+            )
+
+            if response.choices and response.choices[0].message.content:
+                expanded_roles = []
+                lines = response.choices[0].message.content.strip().split("\n")
+
+                for line in lines:
+                    clean_line = line.strip()
+                    # Remove numbering, bullets, etc.
+                    clean_line = re.sub(r"^[\d\.\-\*\+\s]+", "", clean_line)
+                    if clean_line and len(clean_line) > 2:
+                        expanded_roles.append(clean_line)
+
+                if expanded_roles:
+                    logger.info(
+                        f"✅ AI expanded '{role}' to {len(expanded_roles)} roles: {expanded_roles}"
+                    )
+                    return expanded_roles[:5]  # Limit to 5 roles
+
+        except Exception as e:
+            logger.warning(f"AI expansion failed for '{role}': {e}")
+
+        # Fallback to original role
+        return [role]
 
     def _infer_categories_from_roles_flexible(self, roles: List[str]) -> List[str]:
         """Intelligently infer job categories from any job title using pattern matching"""
