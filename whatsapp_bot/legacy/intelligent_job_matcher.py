@@ -1446,6 +1446,15 @@ class IntelligentJobMatcher:
         - Legacy text-based detection (fallback)
         """
         user_arrangements = user_prefs.get("work_arrangements", []) or []
+
+        # Handle different data types (list, set, or single string)
+        if isinstance(user_arrangements, set):
+            user_arrangements = list(user_arrangements)
+        elif isinstance(user_arrangements, str):
+            user_arrangements = [user_arrangements]
+        elif not isinstance(user_arrangements, list):
+            user_arrangements = []
+
         if not user_arrangements:
             return 0.0
 
@@ -1461,10 +1470,38 @@ class IntelligentJobMatcher:
 
         max_score = 0.0
 
+        # Check if user is flexible/open to any arrangement
+        user_is_flexible = any(
+            arr.lower() in ["hybrid", "flexible", "any", "open"]
+            for arr in user_arrangements
+        )
+
         for arrangement in user_arrangements:
             arrangement_lower = arrangement.lower()
 
-            if arrangement_lower == "remote":
+            # FLEXIBLE/HYBRID users are open to ANY work arrangement
+            if arrangement_lower in ["hybrid", "flexible", "any", "open"]:
+                # Give high score for any job with clear work arrangement
+                if ai_work_arrangement:
+                    max_score = max(
+                        max_score, 18.0
+                    )  # High score for any clear arrangement
+                elif any([ai_remote_allowed, is_remote]):
+                    max_score = max(max_score, 16.0)  # Remote jobs
+                else:
+                    max_score = max(max_score, 14.0)  # Default on-site assumption
+
+                # Also check specific arrangements for even higher scores
+                if "remote" in ai_work_arrangement or ai_remote_allowed:
+                    max_score = max(max_score, 20.0)  # Perfect for remote
+                elif "hybrid" in ai_work_arrangement:
+                    max_score = max(max_score, 20.0)  # Perfect for hybrid
+                elif (
+                    "on-site" in ai_work_arrangement or "onsite" in ai_work_arrangement
+                ):
+                    max_score = max(max_score, 20.0)  # Perfect for on-site
+
+            elif arrangement_lower == "remote":
                 score = self._score_remote_arrangement(
                     ai_work_arrangement,
                     ai_remote_allowed,
@@ -1472,12 +1509,6 @@ class IntelligentJobMatcher:
                     job_title,
                     job_description,
                     location,
-                )
-                max_score = max(max_score, score)
-
-            elif arrangement_lower == "hybrid":
-                score = self._score_hybrid_arrangement(
-                    ai_work_arrangement, job_title, job_description, location
                 )
                 max_score = max(max_score, score)
 

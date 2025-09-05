@@ -583,6 +583,15 @@ class IntelligentJobMatcher:
     def _score_work_arrangement(self, user_prefs: Dict, job: Dict) -> float:
         """Score work arrangement matching"""
         user_arrangements = user_prefs.get("work_arrangements", []) or []
+
+        # Handle different data types (list, set, or single string)
+        if isinstance(user_arrangements, set):
+            user_arrangements = list(user_arrangements)
+        elif isinstance(user_arrangements, str):
+            user_arrangements = [user_arrangements]
+        elif not isinstance(user_arrangements, list):
+            user_arrangements = []
+
         if not user_arrangements:
             return 0.0
 
@@ -593,8 +602,31 @@ class IntelligentJobMatcher:
         ai_remote = job.get("ai_remote_allowed", False)
         is_remote = job.get("is_remote", False)
 
+        max_score = 0.0
+
         for arrangement in user_arrangements:
-            if arrangement == "remote":
+            arrangement_lower = arrangement.lower()
+
+            # FLEXIBLE/HYBRID users are open to ANY work arrangement
+            if arrangement_lower in ["hybrid", "flexible", "any", "open"]:
+                # Give high score for any job with clear work arrangement
+                if (
+                    ai_remote
+                    or is_remote
+                    or "remote" in job_title
+                    or "remote" in job_description
+                ):
+                    max_score = max(max_score, 20.0)  # Perfect for remote
+                elif (
+                    "hybrid" in job_title
+                    or "hybrid" in job_description
+                    or "flexible" in job_description
+                ):
+                    max_score = max(max_score, 20.0)  # Perfect for hybrid
+                else:
+                    max_score = max(max_score, 18.0)  # Good for on-site (default)
+
+            elif arrangement_lower == "remote":
                 if (
                     ai_remote
                     or is_remote
@@ -602,19 +634,13 @@ class IntelligentJobMatcher:
                     or "remote" in job_description
                     or "remote" in location
                 ):
-                    return 15.0
-            elif arrangement == "hybrid":
-                if (
-                    "hybrid" in job_title
-                    or "hybrid" in job_description
-                    or "flexible" in job_description
-                ):
-                    return 15.0
-            elif arrangement == "on-site":
-                if not (ai_remote or is_remote or "remote" in location):
-                    return 10.0  # Lower score as on-site is default
+                    max_score = max(max_score, 20.0)
 
-        return 0.0
+            elif arrangement_lower in ["on-site", "onsite", "office"]:
+                if not (ai_remote or is_remote or "remote" in location):
+                    max_score = max(max_score, 18.0)  # Good score for on-site
+
+        return max_score
 
     def _score_location_match(self, user_prefs: Dict, job: Dict) -> float:
         """Score location matching"""
