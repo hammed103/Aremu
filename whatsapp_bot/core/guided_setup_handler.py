@@ -234,9 +234,14 @@ class GuidedSetupHandler:
             else "Not set"
         )
 
-        # Format all preferences
-        job_roles = saved_prefs.get("job_roles", [])
-        job_roles_str = ", ".join(job_roles) if job_roles else "Not set"
+        # Format all preferences - show original user input for jobs
+        user_job_input = saved_prefs.get("user_job_input")
+        if user_job_input:
+            job_roles_str = user_job_input
+        else:
+            # Fallback to AI-enhanced roles if no original input
+            job_roles = saved_prefs.get("job_roles", [])
+            job_roles_str = ", ".join(job_roles) if job_roles else "Not set"
 
         locations = saved_prefs.get("preferred_locations", [])
         locations_str = ", ".join(locations) if locations else "Not set"

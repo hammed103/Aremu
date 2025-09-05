@@ -545,7 +545,6 @@ Job role to expand: {role}"""
 
 Requirements:
 - If it's a Nigerian city/state, provide the proper city name and state
-- If it's "Remote" or similar, keep as "Remote"
 - If it's international, provide the proper country name
 - Focus on Nigerian geography and common location formats
 - Return only the location names, one per line
@@ -555,7 +554,7 @@ Requirements:
 Examples:
 Input: "lagos" → "Lagos, Lagos State"
 Input: "abuja" → "Abuja, FCT"
-Input: "remote" → "Remote"
+Input: "kano" → "Kano, Kano State"
 Input: "uk" → "United Kingdom"
 
 Location to enhance: {location}"""
