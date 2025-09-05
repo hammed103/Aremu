@@ -291,9 +291,18 @@ class FlexiblePreferenceManager:
                     standardized["languages_spoken"] = languages
 
             # BOOLEAN FIELDS
-            for field in ["salary_negotiable", "willing_to_relocate"]:
+            for field in [
+                "salary_negotiable",
+                "willing_to_relocate",
+                "preferences_confirmed",
+            ]:
                 if field in raw_preferences:
                     standardized[field] = bool(raw_preferences[field])
+
+            # SYSTEM FIELDS - Preserve important system fields
+            for field in ["guided_setup_step", "updating_field"]:
+                if field in raw_preferences:
+                    standardized[field] = raw_preferences[field]
 
             logger.info(f"✅ Flexible standardization: {standardized}")
             return standardized
