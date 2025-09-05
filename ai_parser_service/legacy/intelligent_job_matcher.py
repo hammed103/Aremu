@@ -243,10 +243,9 @@ class IntelligentJobMatcher:
     def _calculate_job_score(self, user_prefs: Dict, job: Dict) -> float:
         """Calculate AI-enhanced job match score using multiple strategies"""
 
-        # LOCATION FILTERING DISABLED - Allow all jobs regardless of location
-        # We'll handle location preferences in the UI/scoring instead of hard filtering
-        # if not self._is_location_compatible(user_prefs, job):
-        #     return 0.0  # Disqualify jobs with incompatible locations
+        # LOCATION FILTERING - Apply before scoring
+        if not self._is_location_compatible(user_prefs, job):
+            return 0.0  # Exclude jobs that don't match location preferences
 
         total_score = 0.0
 
@@ -270,9 +269,9 @@ class IntelligentJobMatcher:
         skills_score = self._score_skills_match(user_prefs, job)
         total_score += skills_score * 0.75  # Reduce from 20 to 15 points
 
-        # 6. WORK ARRANGEMENT MATCHING (10 points) - DISABLED (uses location)
-        # work_score = self._score_work_arrangement(user_prefs, job)
-        # total_score += work_score * 0.67  # Reduce from 15 to 10 points
+        # 6. WORK ARRANGEMENT MATCHING (15 points) - RE-ENABLED with AI enhancement
+        work_score = self._score_work_arrangement(user_prefs, job)
+        total_score += work_score
 
         # 7. LOCATION MATCHING (10 points) - RE-ENABLED for WhatsApp jobs
         location_score = self._score_location_match(user_prefs, job)
@@ -807,3 +806,302 @@ class IntelligentJobMatcher:
         except Exception as e:
             logger.error(f"❌ Error formatting job: {e}")
             return f"{index}. Job opportunity available (formatting error)"
+
+    def _is_location_compatible(self, user_prefs: Dict, job: Dict) -> bool:
+        """
+        LOCATION FILTERING - Determine if job location matches user preferences
+
+        This is a FILTER, not scoring. Jobs that don't match are excluded entirely.
+
+        Compares:
+        - user_prefs['preferred_locations'] vs job['location'], job['ai_city'], job['ai_state']
+        - Handles abbreviations: Lagos/LOS, Abuja/FCT, Port Harcourt/PH, etc.
+        - Geographic proximity for Nigerian locations
+        - Remote work exceptions
+        """
+        user_locations = user_prefs.get("preferred_locations", []) or []
+        willing_to_relocate = user_prefs.get("willing_to_relocate", False)
+        user_work_arrangements = user_prefs.get("work_arrangements", []) or []
+
+        # If no location preferences set, allow all jobs
+        if not user_locations:
+            return True
+
+        # If user wants remote work, check if job allows remote
+        if "remote" in [arr.lower() for arr in user_work_arrangements]:
+            if self._job_allows_remote_work(job):
+                return True  # Remote jobs bypass location filtering
+
+        # If user is willing to relocate, allow all jobs with valid locations
+        if willing_to_relocate:
+            job_location = job.get("location", "").strip()
+            ai_city = job.get("ai_city", "").strip()
+            ai_country = job.get("ai_country", "").strip()
+            if job_location or ai_city or ai_country:
+                return True
+
+        # Get job location data
+        job_location = (job.get("location", "") or "").lower().strip()
+        ai_city = (job.get("ai_city", "") or "").lower().strip()
+        ai_state = (job.get("ai_state", "") or "").lower().strip()
+        ai_country = (job.get("ai_country", "") or "").lower().strip()
+
+        # Check each user preferred location
+        for user_location in user_locations:
+            user_loc_lower = user_location.lower().strip()
+
+            if self._locations_match(
+                user_loc_lower, job_location, ai_city, ai_state, ai_country
+            ):
+                return True
+
+        return False
+
+    def _job_allows_remote_work(self, job: Dict) -> bool:
+        """Check if job allows remote work - prioritize AI fields over text"""
+        # AI-enhanced remote detection (highest priority)
+        ai_remote_allowed = job.get("ai_remote_allowed")
+        ai_work_arrangement = (job.get("ai_work_arrangement", "") or "").lower()
+
+        # If AI fields are available, use them exclusively
+        if ai_remote_allowed is not None or ai_work_arrangement:
+            if ai_remote_allowed or "remote" in ai_work_arrangement:
+                return True
+            else:
+                return False  # AI says not remote, don't check text
+
+        # Legacy remote detection (fallback)
+        is_remote = job.get("is_remote", False)
+        if is_remote:
+            return True
+
+        # Text-based remote detection (only if no AI data available)
+        job_title = (job.get("title", "") or "").lower()
+        job_description = (job.get("description", "") or "").lower()
+        location = (job.get("location", "") or "").lower()
+
+        remote_keywords = [
+            "remote",
+            "work from home",
+            "wfh",
+            "telecommute",
+            "distributed",
+        ]
+        all_text = f"{job_title} {job_description} {location}"
+
+        return any(keyword in all_text for keyword in remote_keywords)
+
+    def _locations_match(
+        self,
+        user_location: str,
+        job_location: str,
+        ai_city: str,
+        ai_state: str,
+        ai_country: str,
+    ) -> bool:
+        """
+        Intelligent location matching with abbreviation handling
+
+        Handles:
+        - Direct matches
+        - Nigerian abbreviations (Lagos/LOS, Abuja/FCT, PH, etc.)
+        - State-level matching
+        - City variations and proximity
+        - International locations
+        """
+        # Direct exact matches
+        if (
+            user_location in job_location
+            or user_location in ai_city
+            or user_location in ai_state
+        ):
+            return True
+
+        # Nigerian location abbreviations and variations
+        if self._nigerian_location_match(
+            user_location, job_location, ai_city, ai_state
+        ):
+            return True
+
+        # International location matching
+        if self._international_location_match(
+            user_location, job_location, ai_city, ai_country
+        ):
+            return True
+
+        # Geographic proximity for Nigerian cities
+        if self._nigerian_proximity_match(user_location, ai_city, ai_state):
+            return True
+
+        return False
+
+    def _nigerian_location_match(
+        self, user_location: str, job_location: str, ai_city: str, ai_state: str
+    ) -> bool:
+        """Handle Nigerian location abbreviations and variations"""
+
+        # Nigerian location mappings with abbreviations
+        nigerian_locations = {
+            # Lagos variations
+            "lagos": [
+                "lagos",
+                "los",
+                "lagos state",
+                "lagos island",
+                "lagos mainland",
+                "ikeja",
+                "victoria island",
+                "vi",
+                "ikoyi",
+                "lekki",
+                "surulere",
+                "yaba",
+            ],
+            "los": ["lagos", "los", "lagos state"],
+            # Abuja variations
+            "abuja": [
+                "abuja",
+                "fct",
+                "federal capital territory",
+                "garki",
+                "wuse",
+                "maitama",
+                "asokoro",
+                "gwarinpa",
+            ],
+            "fct": ["abuja", "fct", "federal capital territory"],
+            # Port Harcourt variations
+            "port harcourt": [
+                "port harcourt",
+                "ph",
+                "portharcourt",
+                "rivers",
+                "rivers state",
+            ],
+            "ph": ["port harcourt", "ph", "portharcourt", "rivers"],
+            # Other major cities
+            "kano": ["kano", "kano state"],
+            "ibadan": ["ibadan", "oyo", "oyo state"],
+            "kaduna": ["kaduna", "kaduna state"],
+            "jos": ["jos", "plateau", "plateau state"],
+            "enugu": ["enugu", "enugu state"],
+            "calabar": ["calabar", "cross river", "cross river state"],
+            "warri": ["warri", "delta", "delta state"],
+            "benin": ["benin", "benin city", "edo", "edo state"],
+            "aba": ["aba", "abia", "abia state"],
+            "onitsha": ["onitsha", "anambra", "anambra state"],
+        }
+
+        # Check if user location matches any variation
+        user_variations = []
+        for main_location, variations in nigerian_locations.items():
+            if user_location in variations:
+                user_variations = variations
+                break
+
+        if not user_variations:
+            user_variations = [user_location]  # Use as-is if no mapping found
+
+        # Check against job location fields
+        all_job_text = f"{job_location} {ai_city} {ai_state}".lower()
+
+        return any(variation in all_job_text for variation in user_variations)
+
+    def _international_location_match(
+        self, user_location: str, job_location: str, ai_city: str, ai_country: str
+    ) -> bool:
+        """Handle international location matching"""
+
+        # Country-level matching
+        country_mappings = {
+            "nigeria": ["nigeria", "ng", "nigerian", "naija"],
+            "ghana": ["ghana", "gh", "ghanaian"],
+            "kenya": ["kenya", "ke", "kenyan", "nairobi"],
+            "south africa": ["south africa", "za", "sa", "cape town", "johannesburg"],
+            "united states": ["usa", "us", "united states", "america", "american"],
+            "united kingdom": [
+                "uk",
+                "united kingdom",
+                "britain",
+                "british",
+                "england",
+                "london",
+            ],
+            "canada": ["canada", "ca", "canadian", "toronto", "vancouver"],
+            "germany": ["germany", "de", "german", "berlin", "munich"],
+            "france": ["france", "fr", "french", "paris"],
+        }
+
+        # Find user's country group
+        user_country_variations = []
+        for country, variations in country_mappings.items():
+            if user_location in variations:
+                user_country_variations = variations
+                break
+
+        if user_country_variations:
+            all_job_text = f"{job_location} {ai_city} {ai_country}".lower()
+            return any(
+                variation in all_job_text for variation in user_country_variations
+            )
+
+        return False
+
+    def _nigerian_proximity_match(
+        self, user_location: str, ai_city: str, ai_state: str
+    ) -> bool:
+        """Check for geographic proximity within Nigerian regions - STRICT matching only"""
+
+        # Regional clusters for proximity matching - ONLY same region allowed
+        regional_clusters = {
+            "southwest": [
+                "lagos",
+                "ibadan",
+                "abeokuta",
+                "ilorin",
+                "oshogbo",
+                "akure",
+                "ado ekiti",
+            ],
+            "southeast": [
+                "enugu",
+                "onitsha",
+                "aba",
+                "owerri",
+                "umuahia",
+                "awka",
+                "abakaliki",
+            ],
+            "southsouth": [
+                "port harcourt",
+                "warri",
+                "benin",
+                "calabar",
+                "uyo",
+                "yenagoa",
+            ],
+            "northcentral": ["abuja", "jos", "makurdi", "minna", "lokoja", "lafia"],
+            "northwest": ["kano", "kaduna", "zaria", "sokoto", "katsina"],
+            "northeast": ["maiduguri", "yola", "bauchi", "gombe", "jalingo"],
+        }
+
+        # Find user's region
+        user_region = None
+        for region, cities in regional_clusters.items():
+            if any(city in user_location for city in cities):
+                user_region = region
+                break
+
+        if not user_region:
+            return False
+
+        # Find job's region
+        job_region = None
+        ai_city_lower = ai_city.lower()
+        for region, cities in regional_clusters.items():
+            if any(city in ai_city_lower for city in cities):
+                job_region = region
+                break
+
+        # Only allow matches within the SAME region (strict proximity)
+        return user_region == job_region and job_region is not None
