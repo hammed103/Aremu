@@ -79,7 +79,9 @@ class SmartDeliveryEngine:
             )
 
         # Delivery settings
-        self.min_match_score = 50  # Minimum match score for delivery
+        self.min_match_score = (
+            45  # Minimum match score for delivery (lowered for better coverage)
+        )
         self.max_jobs_per_user_per_day = None  # No daily limits
         self.max_alerts_per_batch = 50  # Prevent spam during large scraping
 
