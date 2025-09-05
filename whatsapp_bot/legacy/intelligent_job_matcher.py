@@ -782,7 +782,7 @@ class IntelligentJobMatcher:
 
         max_score = 0.0
 
-        # Check user_roles with fuzzy matching
+        # Check user_roles with fuzzy matching (enhanced for sales)
         for user_role in user_roles:
             if not user_role:
                 continue
@@ -791,14 +791,48 @@ class IntelligentJobMatcher:
             for ai_title in ai_job_titles:
                 if not ai_title:
                     continue
+                ai_title_lower = ai_title.lower()
 
+                # Special handling for sales-related titles
+                if "sales" in user_role_lower and "sales" in ai_title_lower:
+                    # Sales Manager vs Sales Executive should score highly
+                    sales_terms = [
+                        "manager",
+                        "executive",
+                        "supervisor",
+                        "representative",
+                        "associate",
+                        "specialist",
+                        "coordinator",
+                        "lead",
+                    ]
+                    user_has_sales_term = any(
+                        term in user_role_lower for term in sales_terms
+                    )
+                    job_has_sales_term = any(
+                        term in ai_title_lower for term in sales_terms
+                    )
+
+                    if user_has_sales_term and job_has_sales_term:
+                        max_score = max(
+                            max_score, 32.0
+                        )  # High score for sales variations
+                    elif "sales" in user_role_lower and "sales" in ai_title_lower:
+                        max_score = max(
+                            max_score, 30.0
+                        )  # Good score for any sales match
+
+                # Regular fuzzy matching
                 similarity = SequenceMatcher(
-                    None, user_role_lower, ai_title.lower()
+                    None, user_role_lower, ai_title_lower
                 ).ratio()
                 if similarity > 0.85:
                     max_score = max(max_score, 30.0)
                 elif similarity > 0.7:
                     max_score = max(max_score, 25.0)
+                elif similarity > 0.6 and "sales" in user_role_lower:
+                    # More lenient for sales roles
+                    max_score = max(max_score, 22.0)
 
         # Check user_job_input with fuzzy matching
         if user_job_input and max_score < 30.0:
@@ -1115,7 +1149,7 @@ class IntelligentJobMatcher:
                     ):
                         return 20.0
 
-        # Infer industry from user roles
+        # Infer industry from user roles with enhanced sales matching
         role_industry_map = {
             "tech": ["technology", "software", "information technology"],
             "finance": ["finance", "financial services", "banking"],
@@ -1123,7 +1157,52 @@ class IntelligentJobMatcher:
             "education": ["education", "academic", "training"],
             "retail": ["retail", "e-commerce", "consumer goods"],
             "media": ["media", "entertainment", "advertising"],
+            "sales": [
+                "sales",
+                "retail",
+                "finance",
+                "insurance",
+                "real estate",
+                "pharmaceutical",
+                "healthcare",
+                "consulting",
+                "business",
+            ],
         }
+
+        # Special handling for sales roles - they work across many industries
+        sales_keywords = ["sales", "account", "business development", "key account"]
+        is_sales_user = any(
+            keyword in role.lower() for role in user_roles for keyword in sales_keywords
+        )
+
+        if is_sales_user:
+            # Sales roles are valuable across many industries
+            sales_friendly_industries = [
+                "healthcare",
+                "medical",
+                "pharmaceutical",
+                "finance",
+                "financial",
+                "insurance",
+                "retail",
+                "real estate",
+                "consulting",
+                "business",
+                "technology",
+                "software",
+                "manufacturing",
+                "automotive",
+            ]
+            for ai_industry in ai_industries:
+                ai_industry_lower = ai_industry.lower()
+                if any(
+                    industry in ai_industry_lower
+                    for industry in sales_friendly_industries
+                ):
+                    return 15.0  # Good match for sales in relevant industries
+                elif "sales" in ai_industry_lower:
+                    return 20.0  # Perfect match for sales industry
 
         for user_role in user_roles:
             user_role_lower = user_role.lower()
@@ -1132,6 +1211,11 @@ class IntelligentJobMatcher:
                     for ai_industry in ai_industries:
                         if any(ind in ai_industry.lower() for ind in industries):
                             return 15.0
+
+        # Fallback: any industry with sales component gets some points
+        for ai_industry in ai_industries:
+            if "sales" in ai_industry.lower():
+                return 10.0
 
         return 0.0
 
@@ -1715,7 +1799,8 @@ class IntelligentJobMatcher:
         # IMPORTANT: If user wants salary info but job has none, give partial points
         # This prevents penalizing the majority of jobs that don't include salary
         if not job_has_salary:
-            return 8.0  # Give 8/20 points for jobs without salary data
+            # Give 10/20 points for jobs without salary data (improved from 8)
+            return 10.0
 
         # Convert to numbers if they're strings
         try:
@@ -2103,9 +2188,18 @@ class IntelligentJobMatcher:
         if user_index > job_index and (user_index - job_index) <= 3:
             return 3.0
 
-        # User is underqualified (less desirable)
-        if job_index > user_index and (job_index - user_index) <= 2:
-            return 2.0
+        # User is underqualified - be more lenient for entry-level users
+        if job_index > user_index:
+            gap = job_index - user_index
+            if user_index == 0:  # Entry-level user
+                if gap == 1:  # Entry -> Junior (very common)
+                    return 8.0  # Improved from 2.0
+                elif gap == 2:  # Entry -> Mid (still acceptable)
+                    return 6.0  # Improved from 2.0
+                elif gap == 3:  # Entry -> Senior (stretch but possible)
+                    return 4.0  # New - was 0.0
+            elif gap <= 2:
+                return 3.0  # Slightly improved from 2.0
 
         return 0.0
 
@@ -2141,6 +2235,14 @@ class IntelligentJobMatcher:
                 elif user_years >= (ai_years_min * 0.8):
                     # Slightly underqualified but close
                     return 5.0
+                elif user_years == 0 and ai_years_min <= 3:
+                    # Entry-level user applying to 1-3 year jobs (very common)
+                    if ai_years_min <= 1:
+                        return 8.0  # 0 years vs 1 year - very close
+                    elif ai_years_min <= 2:
+                        return 6.0  # 0 years vs 2 years - acceptable
+                    else:  # ai_years_min == 3
+                        return 4.0  # 0 years vs 3 years - stretch but possible
             elif ai_years_min is not None:
                 # Only minimum specified
                 if user_years >= ai_years_min:

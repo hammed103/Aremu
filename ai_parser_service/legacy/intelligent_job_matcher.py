@@ -690,7 +690,8 @@ class IntelligentJobMatcher:
         # IMPORTANT: If user wants salary info but job has none, give partial points
         # This prevents penalizing the majority of jobs that don't include salary
         if not job_has_salary:
-            return 8.0  # Give 8/20 points for jobs without salary data
+            # Give 10/20 points for jobs without salary data (improved from 8)
+            return 10.0
 
         score = 0.0
 
