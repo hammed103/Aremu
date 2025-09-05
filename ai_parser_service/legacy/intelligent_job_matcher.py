@@ -253,41 +253,37 @@ class IntelligentJobMatcher:
         ai_title_score = self._score_ai_job_titles_match(user_prefs, job)
         total_score += ai_title_score
 
-        # 2. AI JOB FUNCTION MATCHING (25 points) - New AI-powered matching
-        function_score = self._score_ai_job_function_match(user_prefs, job)
-        total_score += function_score
-
-        # 3. AI INDUSTRY MATCHING (20 points) - New AI industry classification
-        industry_score = self._score_ai_industry_match(user_prefs, job)
-        total_score += industry_score
-
-        # 4. SEMANTIC CLUSTER MATCHING (15 points) - Reduced weight
-        cluster_score = self._score_semantic_clusters(user_prefs, job)
-        total_score += cluster_score * 0.6  # Reduce from 25 to 15 points
-
-        # 5. SKILLS MATCHING (15 points) - Keep existing logic
-        skills_score = self._score_skills_match(user_prefs, job)
-        total_score += skills_score * 0.75  # Reduce from 20 to 15 points
-
-        # 6. WORK ARRANGEMENT MATCHING (15 points) - RE-ENABLED with AI enhancement
+        # 2. WORK ARRANGEMENT MATCHING (20 points) - Enhanced with AI detection
         work_score = self._score_work_arrangement(user_prefs, job)
         total_score += work_score
 
-        # 7. LOCATION MATCHING (10 points) - RE-ENABLED for WhatsApp jobs
-        location_score = self._score_location_match(user_prefs, job)
-        total_score += location_score
-
-        # 8. SALARY MATCHING (5 points) - Reduced weight
+        # 3. SALARY MATCHING (20 points) - Enhanced with currency conversion
         salary_score = self._score_salary_match(user_prefs, job)
-        total_score += salary_score * 0.5  # Reduce from 10 to 5 points
+        total_score += salary_score
 
-        # 9. EXPERIENCE LEVEL MATCHING (5 points) - Keep existing
+        # 4. EXPERIENCE LEVEL MATCHING (10 points) - Enhanced with AI fields
         exp_score = self._score_experience_match(user_prefs, job)
         total_score += exp_score
 
-        # 10. CONTACT INFORMATION BONUS (10 points) - NEW: Prioritize jobs with contact info
-        contact_score = self._score_contact_availability(job)
-        total_score += contact_score
+        # 5. AI JOB FUNCTION MATCHING (7 points) - Reduced weight
+        function_score = self._score_ai_job_function_match(user_prefs, job)
+        total_score += function_score * 0.28  # Scale from 25 to 7 points
+
+        # 6. AI INDUSTRY MATCHING (5 points) - Reduced weight
+        industry_score = self._score_ai_industry_match(user_prefs, job)
+        total_score += industry_score * 0.25  # Scale from 20 to 5 points
+
+        # 7. SEMANTIC CLUSTER MATCHING (5 points) - Low weight fallback
+        cluster_score = self._score_semantic_clusters(user_prefs, job)
+        total_score += cluster_score * 0.2  # Scale from 25 to 5 points
+
+        # 8. SKILLS MATCHING (0 points) - DISABLED for now
+        # skills_score = self._score_skills_match(user_prefs, job)
+        # total_score += skills_score
+
+        # 9. CONTACT INFORMATION BONUS (0 points) - DISABLED for now
+        # contact_score = self._score_contact_availability(job)
+        # total_score += contact_score
 
         return min(total_score, 100.0)  # Cap at 100%
 
@@ -643,31 +639,66 @@ class IntelligentJobMatcher:
         return 0.0
 
     def _score_salary_match(self, user_prefs: Dict, job: Dict) -> float:
-        """Score salary matching"""
+        """
+        Enhanced salary matching with fair handling of jobs without salary data
+
+        Most jobs don't include salary, so we give partial points instead of 0
+        to avoid unfairly penalizing the majority of job postings.
+        """
         user_currency = user_prefs.get("salary_currency")
         user_min = user_prefs.get("salary_min")
         user_max = user_prefs.get("salary_max")
 
+        # If user has no salary preferences, return neutral score
         if not any([user_currency, user_min, user_max]):
             return 0.0
 
-        job_currency = job.get("salary_currency") or job.get("ai_salary_currency")
-        job_min = job.get("salary_min") or job.get("ai_salary_min")
-        job_max = job.get("salary_max") or job.get("ai_salary_max")
+        # Get job salary data (prefer AI-enhanced fields)
+        job_currency = job.get("ai_salary_currency") or job.get("salary_currency")
+        job_min = job.get("ai_salary_min") or job.get("salary_min")
+        job_max = job.get("ai_salary_max") or job.get("salary_max")
+
+        # Check if job has any salary data
+        job_has_salary = any([job_currency, job_min, job_max])
+
+        # IMPORTANT: If user wants salary info but job has none, give partial points
+        # This prevents penalizing the majority of jobs that don't include salary
+        if not job_has_salary:
+            return 8.0  # Give 8/20 points for jobs without salary data
 
         score = 0.0
 
-        # Currency match
-        if user_currency and job_currency and user_currency == job_currency:
-            score += 5.0
+        # Currency match (enhanced)
+        if user_currency and job_currency:
+            if user_currency.upper() == job_currency.upper():
+                score += 8.0  # Perfect currency match
+            else:
+                # Partial points for related currencies
+                currency_groups = {
+                    "NGN": ["NGN", "NAIRA"],
+                    "USD": ["USD", "DOLLAR", "DOLLARS"],
+                    "EUR": ["EUR", "EURO", "EUROS"],
+                    "GBP": ["GBP", "POUND", "POUNDS"],
+                }
+                user_group = None
+                job_group = None
 
-        # Salary range overlap
+                for group, variants in currency_groups.items():
+                    if user_currency.upper() in variants:
+                        user_group = group
+                    if job_currency.upper() in variants:
+                        job_group = group
+
+                if user_group == job_group:
+                    score += 6.0  # Same currency group
+
+        # Salary range overlap (enhanced)
         if user_min and job_max and user_min <= job_max:
-            score += 3.0
+            score += 6.0  # User minimum is achievable
         if user_max and job_min and user_max >= job_min:
-            score += 2.0
+            score += 6.0  # User maximum covers job minimum
 
-        return score
+        return min(score, 20.0)  # Cap at 20 points
 
     def _score_contact_availability(self, job: Dict) -> float:
         """Score jobs based on availability of contact information for CTA buttons"""
