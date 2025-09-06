@@ -12,6 +12,7 @@ from core.bot_controller import BotController
 from services.whatsapp_service import WhatsAppService
 from services.reminder_service import ReminderService
 from services.scraper_service import ScraperService
+from services.automated_cleanup_service import AutomatedCleanupService
 from webhooks.whatsapp_webhook import WhatsAppWebhook
 from utils.logger import setup_logger
 
@@ -76,6 +77,9 @@ try:
     # Initialize scraper service
     scraper_service = ScraperService()
 
+    # Initialize cleanup service
+    cleanup_service = AutomatedCleanupService()
+
     # Check table status and create if needed
     if not reminder_service.check_table_status():
         reminder_service.create_reminder_log_table()
@@ -97,6 +101,10 @@ try:
         # Start scraper daemon
         scraper_service.start_daemon()
         logger.info("🔧 Scraper daemon started in background thread")
+
+        # Start cleanup service
+        cleanup_service.start_automated_cleanup(interval_hours=5)
+        logger.info("🧹 Cleanup service started (every 5 hours)")
     else:
         logger.info(
             f"🕐 Background services not started (production: {is_production}, bot_init: {BOT_INITIALIZED})"
@@ -109,6 +117,7 @@ except Exception as e:
     webhook_handler = None
     reminder_service = None
     scraper_service = None
+    cleanup_service = None
     BOT_INITIALIZED = False
 
 
@@ -275,6 +284,86 @@ def api_stop_scraper_daemon():
 
     scraper_service.stop_daemon()
     return jsonify({"status": "success", "message": "Scraper daemon stopped"})
+
+
+@app.route("/api/cleanup/run", methods=["POST"])
+def api_run_cleanup():
+    """Run manual cleanup operation"""
+    if cleanup_service is None:
+        return jsonify({"error": "Cleanup service not initialized"}), 500
+
+    try:
+        success = cleanup_service.run_full_cleanup()
+        if success:
+            return jsonify({"status": "success", "message": "Cleanup completed"})
+        else:
+            return jsonify({"status": "error", "message": "Cleanup failed"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/cleanup/stats", methods=["GET"])
+def api_cleanup_stats():
+    """Get cleanup statistics"""
+    if cleanup_service is None:
+        return jsonify({"error": "Cleanup service not initialized"}), 500
+
+    try:
+        cursor = cleanup_service.connection.cursor()
+
+        # Count total jobs
+        cursor.execute("SELECT COUNT(*) FROM canonical_jobs")
+        total_jobs = cursor.fetchone()[0]
+
+        # Count old jobs (5 days)
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM canonical_jobs
+            WHERE scraped_at < NOW() - INTERVAL '5 days'
+            OR scraped_at IS NULL
+            """
+        )
+        old_jobs = cursor.fetchone()[0]
+
+        # Count potential duplicates
+        cursor.execute(
+            """
+            WITH duplicates AS (
+                SELECT
+                    id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY
+                            LOWER(TRIM(title)),
+                            LOWER(TRIM(company)),
+                            LOWER(TRIM(COALESCE(location, '')))
+                        ORDER BY scraped_at DESC, id DESC
+                    ) as row_num
+                FROM canonical_jobs
+                WHERE title IS NOT NULL
+                AND company IS NOT NULL
+            )
+            SELECT COUNT(*)
+            FROM duplicates
+            WHERE row_num > 1
+            """
+        )
+        duplicate_jobs = cursor.fetchone()[0]
+
+        return jsonify(
+            {
+                "status": "success",
+                "stats": {
+                    "total_jobs": total_jobs,
+                    "old_jobs": old_jobs,
+                    "duplicate_jobs": duplicate_jobs,
+                    "jobs_after_cleanup": total_jobs - old_jobs - duplicate_jobs,
+                },
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
