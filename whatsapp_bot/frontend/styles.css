@@ -1134,35 +1134,10 @@ body {
   }
 
   .scanning-sidebar {
-    flex: none;
-    width: 100%;
-    max-width: 400px;
-    position: static;
-    order: -1;
+    display: none;
   }
 
-  .scanning-header {
-    justify-content: center;
-    margin-bottom: 16px;
-  }
 
-  .sources-grid {
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-
-  .source-item {
-    padding: 10px 12px;
-  }
-
-  .source-icon {
-    width: 28px;
-    height: 28px;
-  }
-
-  .source-text {
-    font-size: 13px;
-  }
 
   .hero-content {
     text-align: center;
