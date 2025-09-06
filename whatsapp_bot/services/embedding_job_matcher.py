@@ -154,11 +154,15 @@ class EmbeddingJobMatcher:
                     1 - (job_embedding <=> %s::vector) as similarity_score
                 FROM canonical_jobs 
                 WHERE job_embedding IS NOT NULL
-                AND posted_date >= CURRENT_DATE - INTERVAL '60 days'
+                AND scraped_at >= CURRENT_DATE - INTERVAL '60 days'
                 ORDER BY job_embedding <=> %s::vector
                 LIMIT %s
             """,
-                (user_embedding_for_query, user_embedding_for_query, limit * 2),
+                (
+                    user_embedding_for_query,
+                    user_embedding_for_query,
+                    500,
+                ),  # Get more jobs to filter
             )
 
             jobs = cursor.fetchall()
@@ -174,8 +178,8 @@ class EmbeddingJobMatcher:
                 job_dict["match_score"] = match_score
                 job_dict["match_reasons"] = [f"AI semantic match: {similarity:.1%}"]
 
-                # Include matches above 10% threshold
-                if similarity >= 0.10:  # 10% similarity threshold
+                # Include matches above 58% threshold
+                if similarity >= 0.58:  # 58% similarity threshold
                     matched_jobs.append(job_dict)
 
             logger.info(
