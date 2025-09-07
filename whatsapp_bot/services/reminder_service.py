@@ -202,12 +202,12 @@ class ReminderService:
             if not reminder_slot:
                 return False
 
-            # Check if we already sent this reminder today
+            # Check if we already sent this reminder recently (within last 2 hours)
             query = """
             SELECT COUNT(*) FROM reminder_log
             WHERE user_id = %s
             AND reminder_type = %s
-            AND DATE(sent_at) = CURRENT_DATE
+            AND sent_at > NOW() - INTERVAL '2 hours'
             """
 
             result = self.execute_with_retry(
@@ -215,7 +215,13 @@ class ReminderService:
             )
             count = result[0]
 
-            return count == 0
+            if count > 0:
+                logger.info(
+                    f"⏭️ Skipping {reminder_slot}h reminder for user {user_id} - already sent recently"
+                )
+                return False
+
+            return True
 
         except Exception as e:
             logger.error(f"❌ Error checking reminder status: {e}")
@@ -249,43 +255,46 @@ class ReminderService:
 
         elif hours_remaining >= 4.5 and hours_remaining <= 5.5:  # 5 hour reminder
             return (
-                f"🤖 *Your job-hunting buddy checking in!*\n\n"
-                f"I've been working for {monitoring_hours} hours straight!\n"
-                f"Delivered {jobs_sent_count} matches to your WhatsApp 📱\n\n"
-                f"I've got 5 hours left of *instant notifications*\n"
-                f"Click 'Stay Active' to keep the alerts coming! 🚀"
+                f"👋 *Quick check-in!*\n\n"
+                f"I've been monitoring for {monitoring_hours} hours now.\n"
+                f"Found {jobs_sent_count} matches for you! 🎯\n\n"
+                f"I have 5 more hours of instant alerts remaining.\n"
+                f"Click 'Stay Active' to continue getting real-time job alerts! ⚡"
             )
 
         elif hours_remaining >= 2.5 and hours_remaining <= 3.5:  # 3 hour reminder
             return (
-                f"⚠️ *Don't miss out!*\n\n"
-                f"Only 3 hours left of **instant job alerts**! ⏰\n\n"
-                f"When I sleep:\n"
-                f"✅ You can still request jobs ('show me jobs')\n"
-                f"❌ But no automatic real-time notifications\n"
-                f"❌ Other candidates get alerts first\n\n"
-                f"Click 'Stay Active' to keep your edge! 🚀"
+                f"⏰ *3 hours remaining*\n\n"
+                f"I have 3 hours left of instant job alerts.\n\n"
+                f"After this period:\n"
+                f"✅ You can still request jobs anytime\n"
+                f"📱 Just ask me 'show me jobs' whenever you want\n"
+                f"⚡ But automatic alerts will pause\n\n"
+                f"Click 'Stay Active' to continue instant notifications! 🚀"
             )
 
         elif hours_remaining >= 0.5 and hours_remaining <= 1.5:  # 1 hour reminder
             return (
-                f"🔋 *FINAL HOUR ALERT!*\n\n"
-                f"Just 1 hour left of **instant notifications**! 😰\n\n"
-                f"After I sleep:\n"
-                f"📱 No automatic job alerts\n"
-                f"🏃‍♂️ You'll need to manually ask for jobs\n"
-                f"⚡ Others get the speed advantage\n\n"
-                f"**Quick!** Click 'Stay Active' below! ⚡"
+                f"🔔 *1 hour remaining*\n\n"
+                f"I have 1 hour left of instant notifications.\n\n"
+                f"After this:\n"
+                f"📱 You can still get jobs by asking me\n"
+                f"💬 Just say 'show me jobs' anytime\n"
+                f"⏸️ Automatic alerts will pause\n\n"
+                f"Click 'Stay Active' to continue! ⚡"
             )
 
         else:  # 15 minutes remaining
+            # Calculate actual minutes remaining
+            minutes_remaining = int(hours_remaining * 60)
+
             return (
-                f"🚨 *LAST CALL - 15 MINUTES!*\n\n"
-                f"This is it! **Instant alerts** shutting down! 😱\n\n"
-                f"⏰ 15 minutes to save automatic notifications\n"
-                f"⏰ 15 minutes to stay ahead of competition\n\n"
-                f"**CLICK 'STAY ACTIVE' NOW!** ⚡\n"
-                f"(You can still get jobs when I sleep, but no auto-alerts!) 🆘"
+                f"🚨 *FINAL ALERT - {minutes_remaining} MINUTES LEFT!*\n\n"
+                f"Your 24-hour window is almost up! ⏰\n\n"
+                f"⚡ {minutes_remaining} minutes to extend instant notifications\n"
+                f"📱 After this, you'll need to manually request jobs\n\n"
+                f"**Click 'Stay Active' to continue!** 👆\n"
+                f"(Don't worry - you can always ask me for jobs later! 😊)"
             )
 
     def log_reminder_sent(
@@ -310,6 +319,31 @@ class ReminderService:
             hours_elapsed = user.get("hours_elapsed", 0)
 
             if not self.should_send_reminder(hours_remaining, user["id"]):
+                return False
+
+            # Final duplicate check before sending
+            reminder_slot = self.get_reminder_slot(hours_remaining)
+            reminder_type = (
+                f"{reminder_slot}h_reminder"
+                if reminder_slot
+                else f"{int(hours_remaining)}h_reminder"
+            )
+
+            check_query = """
+            SELECT COUNT(*) FROM reminder_log
+            WHERE user_id = %s
+            AND reminder_type = %s
+            AND sent_at > NOW() - INTERVAL '30 minutes'
+            """
+
+            check_result = self.execute_with_retry(
+                check_query, (user["id"], reminder_type), fetch_one=True
+            )
+
+            if check_result[0] > 0:
+                logger.info(
+                    f"⏭️ Final duplicate check: Skipping {reminder_type} for user {user['id']}"
+                )
                 return False
 
             message = self.get_progressive_reminder_message(
