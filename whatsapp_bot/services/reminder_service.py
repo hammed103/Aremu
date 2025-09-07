@@ -180,18 +180,19 @@ class ReminderService:
 
     def get_reminder_slot(self, hours_remaining: float) -> float:
         """Get the appropriate reminder slot for the given hours remaining"""
-        for slot in self.reminder_schedule:
-            if slot == 0.25 and hours_remaining <= 0.5:  # 15 minutes
-                return slot
-            elif slot == 1 and 0.5 < hours_remaining <= 1.5:  # 1 hour
-                return slot
-            elif slot == 3 and 1.5 < hours_remaining <= 4:  # 3 hours
-                return slot
-            elif slot == 5 and 4 < hours_remaining <= 6:  # 5 hours
-                return slot
-            elif slot == 8 and 6 < hours_remaining <= 10:  # 8 hours
-                return slot
-        return None
+        # Use clear ranges that don't overlap and cover all cases
+        if hours_remaining <= 0.5:  # 0-30 minutes
+            return 0.25
+        elif 0.5 < hours_remaining <= 1.5:  # 30 minutes - 1.5 hours
+            return 1
+        elif 1.5 < hours_remaining <= 4:  # 1.5 - 4 hours
+            return 3
+        elif 4 < hours_remaining <= 6.5:  # 4 - 6.5 hours
+            return 5
+        elif 6.5 < hours_remaining <= 24:  # 6.5 - 24 hours
+            return 8
+        else:
+            return None
 
     def should_send_reminder(self, hours_remaining: float, user_id: int) -> bool:
         """Check if we should send a reminder at this time"""
@@ -235,7 +236,7 @@ class ReminderService:
         # Calculate monitoring hours (24 - hours_remaining)
         monitoring_hours = int(24 - hours_remaining)
 
-        if hours_remaining >= 7.5 and hours_remaining <= 8.5:  # 8 hour reminder
+        if hours_remaining > 6.5:  # 8 hour reminder (6.5-24 hours)
             if jobs_sent_count > 0:
                 return (
                     f"📊 *Market Update for you!*\n\n"
@@ -253,7 +254,7 @@ class ReminderService:
                     f"Click 'Stay Active' below to keep me hunting! ⚡"
                 )
 
-        elif hours_remaining >= 4.5 and hours_remaining <= 5.5:  # 5 hour reminder
+        elif 4 < hours_remaining <= 6.5:  # 5 hour reminder (4-6.5 hours)
             return (
                 f"👋 *Quick check-in!*\n\n"
                 f"I've been monitoring for {monitoring_hours} hours now.\n"
@@ -262,7 +263,7 @@ class ReminderService:
                 f"Click 'Stay Active' to continue getting real-time job alerts! ⚡"
             )
 
-        elif hours_remaining >= 2.5 and hours_remaining <= 3.5:  # 3 hour reminder
+        elif 1.5 < hours_remaining <= 4:  # 3 hour reminder (1.5-4 hours)
             return (
                 f"⏰ *3 hours remaining*\n\n"
                 f"I have 3 hours left of instant job alerts.\n\n"
@@ -273,7 +274,7 @@ class ReminderService:
                 f"Click 'Stay Active' to continue instant notifications! 🚀"
             )
 
-        elif hours_remaining >= 0.5 and hours_remaining <= 1.5:  # 1 hour reminder
+        elif 0.5 < hours_remaining <= 1.5:  # 1 hour reminder (0.5-1.5 hours)
             return (
                 f"🔔 *1 hour remaining*\n\n"
                 f"I have 1 hour left of instant notifications.\n\n"
@@ -313,65 +314,83 @@ class ReminderService:
             logger.error(f"❌ Error logging reminder: {e}")
 
     def send_reminder(self, user: Dict) -> bool:
-        """Send reminder to a specific user"""
+        """Send reminder to a specific user with database-level duplicate prevention"""
+        user_id = user["id"]
+        hours_remaining = user["hours_remaining"]
+
+        # Create a unique lock ID for this user and reminder type
+        reminder_slot = self.get_reminder_slot(hours_remaining)
+        if not reminder_slot:
+            logger.warning(f"⚠️ No reminder slot found for {hours_remaining}h remaining")
+            return False
+
+        lock_id = (
+            hash(f"{user_id}_{reminder_slot}") % 2147483647
+        )  # PostgreSQL int limit
+
         try:
-            hours_remaining = user["hours_remaining"]
-            hours_elapsed = user.get("hours_elapsed", 0)
-
-            if not self.should_send_reminder(hours_remaining, user["id"]):
-                return False
-
-            # Final duplicate check before sending
-            reminder_slot = self.get_reminder_slot(hours_remaining)
-            reminder_type = (
-                f"{reminder_slot}h_reminder"
-                if reminder_slot
-                else f"{int(hours_remaining)}h_reminder"
+            # Use PostgreSQL advisory lock to prevent concurrent reminders
+            lock_query = "SELECT pg_try_advisory_lock(%s)"
+            lock_result = self.execute_with_retry(
+                lock_query, (lock_id,), fetch_one=True
             )
 
-            check_query = """
-            SELECT COUNT(*) FROM reminder_log
-            WHERE user_id = %s
-            AND reminder_type = %s
-            AND sent_at > NOW() - INTERVAL '30 minutes'
-            """
-
-            check_result = self.execute_with_retry(
-                check_query, (user["id"], reminder_type), fetch_one=True
-            )
-
-            if check_result[0] > 0:
+            if not lock_result[0]:  # Failed to acquire lock
                 logger.info(
-                    f"⏭️ Final duplicate check: Skipping {reminder_type} for user {user['id']}"
+                    f"🔒 Lock failed: Another reminder process active for user {user_id}"
                 )
                 return False
 
-            message = self.get_progressive_reminder_message(
-                hours_remaining, user["jobs_sent_count"], hours_elapsed
-            )
+            try:
+                hours_elapsed = user.get("hours_elapsed", 0)
 
-            # Send the reminder with Stay Active button
-            success = self.whatsapp_service.send_reminder_with_stay_active_button(
-                user["phone_number"], message
-            )
+                if not self.should_send_reminder(hours_remaining, user_id):
+                    return False
 
-            if success:
-                # Get the correct reminder slot for logging
-                reminder_slot = self.get_reminder_slot(hours_remaining)
+                # Final duplicate check with lock held
+                reminder_type = f"{reminder_slot}h_reminder"
 
-                # Log the reminder
-                reminder_type = (
-                    f"{reminder_slot}h_reminder"
-                    if reminder_slot
-                    else f"{int(hours_remaining)}h_reminder"
+                check_query = """
+                SELECT COUNT(*) FROM reminder_log
+                WHERE user_id = %s
+                AND reminder_type = %s
+                AND sent_at > NOW() - INTERVAL '15 minutes'
+                """
+
+                check_result = self.execute_with_retry(
+                    check_query, (user_id, reminder_type), fetch_one=True
                 )
-                self.log_reminder_sent(user["id"], reminder_type, hours_remaining)
 
-                logger.info(f"✅ Sent {reminder_type} to {user['phone_number']}")
-                return True
-            else:
-                logger.error(f"❌ Failed to send reminder to {user['phone_number']}")
-                return False
+                if check_result[0] > 0:
+                    logger.info(
+                        f"⏭️ Final duplicate check: Skipping {reminder_type} for user {user_id}"
+                    )
+                    return False
+
+                message = self.get_progressive_reminder_message(
+                    hours_remaining, user["jobs_sent_count"], hours_elapsed
+                )
+
+                # Send the reminder with Stay Active button
+                success = self.whatsapp_service.send_reminder_with_stay_active_button(
+                    user["phone_number"], message
+                )
+
+                if success:
+                    # Log the reminder immediately
+                    self.log_reminder_sent(user_id, reminder_type, hours_remaining)
+                    logger.info(f"✅ Sent {reminder_type} to {user['phone_number']}")
+                    return True
+                else:
+                    logger.error(
+                        f"❌ Failed to send reminder to {user['phone_number']}"
+                    )
+                    return False
+
+            finally:
+                # Always release the lock
+                unlock_query = "SELECT pg_advisory_unlock(%s)"
+                self.execute_with_retry(unlock_query, (lock_id,))
 
         except Exception as e:
             logger.error(f"❌ Error sending reminder: {e}")
